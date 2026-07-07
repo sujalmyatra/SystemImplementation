@@ -1,0 +1,184 @@
+bhuatik 
+Create library management system. perform crud. system have books and members . record borrowat, return at. one member can have multiple books . one book  have multiple copies and different id . implement crud with generic repository. implement using ef core . the count of copies is to be maintained. one member can have multiple books . books have different copy numbers  . return policy is of 10 days. otherwise over due. in a month 5 over due are allowed . if more than that then not allowed. keep track of over dues . linq :==> find members who have more than 5 over dues in last month.
+ 
+ 
+build lib management 
+have - books, members, 
+borrowing record borrowed at , returned at ,
+period 10 days
+copy id to member
+
+
+
+member => books <->
+book -> copies <->
+count of copies to be maintained
+return policy is of 10 days or overdue 
+
+
+public abstract class BaseEntity
+{
+	public Guid Id {get; protected set;} = Guid.NewGuid();
+}
+
+public class Member(string name, string email) : BaseEntity
+{
+	public string Name {get; set;} = name;
+	public string Email{get; set;} = email;
+	
+	public ICollection<BorrowRecord> BorrowRecords {get; set;} = new List<BorrowRecord>();
+	
+}
+
+public class Book : BaseEntity
+{
+	public string Title {get; set;}
+	public string ISBN {get; set;}
+
+	public int TotalCopy {get; set;}
+	public int AvailableCopy {get; set;}
+
+	public ICollection<BookCopy> BookCopies {get; set;} = new List<BookCopy>();
+
+	public void AddCopy(string copyNumber)
+	{
+		var copy = new BookCopy(Id, copyNumber);
+		BookCopies.Add(copy);
+		TotalCopy++;
+		AvailableCopy++;	
+	}
+	public void IncreaseAvailableCopy()
+	{
+		AvailableCopy++;
+	}
+	public void DecreaseAvailableCopy()
+	{
+		if(AvailableCopy <= 0)
+			throw new NotAvailableException("No books available");
+		AvailableCopy--;
+	}
+
+	
+	
+}
+public class BookCopy : BaseEntity
+{
+	public string CopyNumber {get; set;}
+	
+	public Guid BookId {get; set;}
+	public Book Book {get; set;}
+	
+	public bool IsAvailable {get; set;} = true;
+
+	public ICollection<BorrowRecord> BorrowRecords {get; set;} = new List<BorrowRecord>();
+	
+	public BookCopy(Guid id, string number)
+	{
+		BookId = id;
+		CopyNumber = number;
+		IsAvailable = true;
+	}
+	
+	public void MarkBorrowed()
+	{
+		if(!IsAvailable)
+			throw new NotAvailableException("book is not available");
+		Is Available = false;
+	}
+	public void MarkReturned()
+	{
+		IsAvailable = true;
+	}
+
+}
+
+public static class LibraryPolicy
+{
+	public const int BorrowPeriodDays = 10;
+	public const int MaxOverDueAllowed = 5;	
+}
+
+public class BorrowRecord : BaseEntity
+{
+	public DateTime BorrowedAt {get; set;}
+	public DateTime? RetunedAt  {get; set;}
+	public DateTime DueAt  {get; set;}
+	
+	public Guid MemberId {get; set;}
+	public Member Member {get; set;} = null!;
+
+	public Guid BookCopyId {get; set;}
+	public BookCopy BookCopy {get; set;}  = null!;
+	
+	public bool IsReturned{get; private set;} = false;
+	
+	public bool IsOverDue{get; private set;} = false;
+
+	
+	public BorrowRecord(Guid memberId, Guid bookCopyId, DateTime borrowedAt)
+	{
+		MemberId = memberId;
+		BookCopyId = bookCopyId;
+		BorrowedAt = borrowedAt;
+		
+		DueAt = borrowedAt.AddDays(LibraryPolicy.BorrowPeriodDays);
+	}
+	
+	public void Return(DateTime returnedAt)
+	{
+		
+		if(returnedAt > DueAt)
+			IsOverDue = true;
+		
+		ReturnedAt = returnedAt;
+	}
+}
+
+var now = DateTime.Now;
+	
+var CurrentMonth = new DateTime(now.Year, now.Month, 1);
+var NextMonth = CurrentMonth.AddMonths(1);
+
+var lastmonth = DateTime.Now.AddMonths(-1);
+
+var overDueCount = BorrowRecord.Where(x => x.MemberId == memberId &&  x.IsOverDue == true && x.DueAt.Month == lastmonth.Month && x.DueAt.Year == lastmonth.Year).Count();
+
+
+
+
+
+
+var members = context.Members
+    .Where(m => m.BorrowRecords.Count(b => b.IsOverDue) > 5)
+    .ToList();
+
+
+
+var lastMonth = DateTime.Now.AddMonths(-1);
+
+var members = context.Members
+    .Where(m => m.BorrowRecords.Count(b =>
+        b.IsOverDue == true &&
+        b.DueAt.Month == lastMonth.Month &&
+        b.DueAt.Year == lastMonth.Year
+    ) > 5)
+    .ToList();
+
+
+
+
+
+
+
+shivang 
+system 
+inventory & warehouse system
+product, warehouses, suppliers, stock movements(1 ware to another, 1 supp to ware, ware to supp)
+transfer stock
+threshold -> 1 product, quantity < 20 -> trigger low stock, if 0 -> no stock
+Reports -> stock value report (product x quantity)
+same product to diff. ware. -> another report to fast moving products.
+slow moving report (if product is not sold in month or less than 5)
+prod from 1 ware to another. the origin ware should have min. that much of product.
+soft delete for Stock Movements
+ 

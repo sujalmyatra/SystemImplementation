@@ -1,0 +1,48 @@
+1 - Drivers riding vehicles <->
+
+2 - Single vehicle can be run by multiple drivers  <->
+
+3 - At a time it would be run by a single driver only it won't happen that 2 drivers are 	running the same vehicle mention validation for that
+
+4 - vehicles based on that there would be rides
+
+5 - whenever user requests for ride then save that into particular users table
+
+6 - Fair Calculation - > Base Fair, some fair would be based on the distance
+for 2 wheeler - 30, 4 wheeler - 60
+
+7 - Distance - > per Km rate only
+	if Distance is less than 10Km than rate-10 Rs.
+	if Distance is greater than 10 Km than rate will be 9 Rs.
+
+8- During last 15 minutes if entire system has got more than 50 rides we will start surge pricing 100Rs, activate surge pricing
+like office peek hours we will enable surge pricing
+
+-> get rides count
+-> During ride creatinon this logic will be applied 
+-> current minute - before 15 minutes
+-> get ride count if > 50 than SurgeIsActive pass surge as well
+->
+
+var before15Minutes = DateTime.Now.AddMinutes(-15); 
+var r = Ride.Count(x => x.CreatedAt >= before15Minutes);
+
+Ride Created -> Accept, Cancle, NoDriver, Complete
+==============================================================================
+
+9 - Genearate Reports - LINQ queries that will provide us a list of data
+1 - reports - Driver Earning Report(Start date - EndDate, what did the driver earned at that particular date
+
+2 - busiest hours 
+ what was the time interval, in which there were maximum bookings,
+like providing a filter of month in that month it will show me all the dates- 1st, 2nd June, 3rd June in particular time like 5-6pm there were maximum bookings in our system, in particular time like in 5-6pm there were maximum booking in our system)
+filteration would be for month and year, like 2026 and June show all the dates corresponding to that date
+
+
+if user requesting a ride non of the drivers have accepted the booking handle it Gracefully
+
+User will request for rides you need to story ride history ef core 
+For calculating the fairs there would be 3 parameters
+1-base fair,
+2 - distance
+3 - time based surging

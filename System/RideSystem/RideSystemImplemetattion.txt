@@ -1,0 +1,707 @@
+Ride System Implemetattion
+
+Domain Layer
+
+Domain/Common/Interfaces
+public interface IDistanceCalculater
+{
+	int Calculate(int distanceKm);
+}
+
+
+Domain/Exceptions
+public class NotAvailableException(string message) : Exception(message)
+{ } 
+
+Domain/Common
+public class BaseDistanceCalculater : IDistanceCalculater
+{
+	public int Calculate(int distanceKm)
+	{
+		if(distanceKm < 0)
+			throw new Exception("Distance must be greater than zero");
+
+		int ratePerKm = distanceKm < 10 ? 10 : 9;
+		
+		return ratePerKm * distanceKm;
+	}
+}
+
+public class FareCalculater(int baseFare, int distanceFare, int surgeFare)
+{
+	public int BaseFare {get; set;} = baseFare;
+	public int DistanceFare {get; set;} = distanceFare;
+	public int SurgeFare {get; set;} = surgeFare;
+	public int TotalFare => BaseFare + DistanceFare + SurgeFare; 
+}
+
+public abstract class BaseEntity
+{
+	public Guid Id {get; protected set;} = Guid.NewGuid();
+}          
+
+
+Domain/Enums
+public enum VehicleType
+{
+	TwoWheeler,
+	FourWheeler
+}
+
+public enum RideStatus
+{
+	Created,
+	Accepted,
+	Cancelled,
+	Completed,	
+	NoDriverAvailable
+}
+
+
+Domain/Entities
+public class Vehicle(VehicleType type, string number) : BaseEntity
+{
+	public string VehicleNumber  {get; private set;} = number;
+	public VehicleType Type {get; private set;} = type;
+	public bool IsOccupied {get; private set;} = false;
+	public ICollection<Ride> Rides = new List<Ride>();
+	public ICollection<DriverVehicle> DriverVehicles { get; private set; } = new List<DriverVehicle>();
+	
+	public bool AquireVehicle()
+	{ 
+		if(IsOccupied)
+		{
+			throw new NotAvailableException("Vehicle is Occupied Already");
+		}
+		
+		IsOccupied = true;
+
+		return true;
+	}
+	public void ReleaseVehicle()
+	{ 
+		IsOccupied = false;
+	}
+}
+
+public class User(string name, string number) : BaseEntity
+{
+	public string Name {get; private set;} = name;
+	public string Number {get; private set;} = number;
+
+	public ICollection<Ride> Rides { get; private set; } = new List<Ride>();
+
+}
+
+public class Driver(string name, string number) : BaseEntity
+{
+	public string Name {get; private set;} = name;
+	public string Number {get; private set;} = number;
+	 
+	public bool IsAvailable {get; private set;} = true;
+	
+	public ICollection<Ride> Rides { get; private set; } = new List<Ride>();
+	public ICollection<DriverVehicle> DriverVehicles { get; private set; } = new List<DriverVehicle>();
+	
+
+	public void SetAvailable()
+	{ 
+		IsAvailable = true;
+	}
+	public void SetUnavailable()
+	{ 
+		IsAvailable = false;
+	}
+
+}
+public class DriverVehicle(Guid driverId, Guid vehicleId) : BaseEntity
+{
+	public Guid DriverId {get; set;} = driverId;
+	public Driver Driver {get; set;} = null!;
+
+	public Guid VehicleId {get; set;} = vehicleId;
+	public Vehicle Vehicle {get; set;} = null!;
+	
+	public bool IsActive {get; set;} = true;
+	
+	public void DeactivateRide()
+	{
+		IsActive = false;
+	}
+	
+}
+public class Ride(Guid userId, VehicleType type, FareCalculater fare, IRideStateFactory stateFactory) : BaseEntity
+{
+	public RideStatus Status { get; set; } = RideStatus.Created;
+	public VehicleType Vehicletype { get; set; } = type;
+
+	public Guid UserId {get; set;} = userId;
+	public User User {get; set;} = null!;
+	
+	public Guid? DriverVehicleId {get; set;}
+	public DriverVehicle? DriverVehicle {get; set;} = null!;
+	
+	public DateTime CreatedAt {get; set;} = DateTime.Now;
+	public DateTime? AcceptedAt {get; set;}
+	public DateTime? EndedAt {get; set;}
+
+	public int BaseFare {get; set;} = fare.BaseFare;
+	public int DistanceFare {get; set;} = fare.DistanceFare;
+	public int SurgeFare {get; set;} = fare.SurgeFare;
+	public int TotalFare => fare.TotalFare; 
+
+	public bool IsSurged { get; private set; } = false;
+
+	public void SetAcceptedAt(DateTime acceptedAt)
+	{
+		AcceptedAt = acceptedAt;
+	}
+
+	public void SetEndedAt(DateTime endedAt)
+	{
+		EndedAt = endedAt;
+	}
+	public Guid? GetDriverVehicleId()
+	{
+		return DriverVehicleId;
+	}
+
+	public void Accept(Guid DriverVehicleId, DateTime acceptedAt)
+	{
+		var state = stateFactory.Create(Status);
+		state.Accept(this);
+		SetAcceptedAt(acceptedAt);
+		SetDriverVehicle(DriverVehicleId);
+		
+	}
+	public void Cancel()
+	{
+		var state = stateFactory.Create(Status);
+		state.Cancel(this);
+	}
+	public void Complete(DateTime endedAt)
+	{
+		var state = stateFactory.Create(Status);
+		state.Complete(this);
+		SetEndedAt(endedAt);
+	}
+	public void NoDriverAvailable()
+	{
+		var state = stateFactory.Create(Status);
+		state.NoDriverAvailable(this);
+	}
+	public void ChangeStatus(RideStatus status)
+	{
+		Status = status;
+	}
+	public void SetSurged()
+	{
+		IsSurged = true;
+	}
+	public void SetDriverVehicle(Guid driverVehicleId)
+	{
+		DriverVehicleId = driverVehicleId;
+	}
+
+}
+
+
+Domain/States/Interfaces
+public interface IRideState
+{
+	RideStatus Status {get;}
+	
+	void Accept(Ride ride);
+	void Cancel(Ride ride);
+	void Complete(Ride ride);
+	void NoDriverAvailable(Ride ride);
+}
+public interface IRideStateFactory
+{
+	IRideState Create(RideStatus status);
+}
+
+
+Domain/States
+
+public class CreatedState : IRideState
+{
+	public RideStatus Status => RideStatus.Created;
+	
+	public void Accept(Ride ride)
+	{
+		ride.ChangeStatus(RideStatus.Accepted);
+	}
+	public void Cancel(Ride ride)
+	{
+		ride.ChangeStatus(RideStatus.Cancelled);
+	}
+	public void Complete(Ride ride)
+	{
+		throw new InvalidOperationException("Unaccepted Ride cannot be completed");
+	}
+	public void NoDriverAvailable(Ride ride)
+	{
+		ride.ChangeStatus(RideStatus.NoDriverAvailable);
+	}
+}
+public class AcceptedState : IRideState
+{
+	public RideStatus Status => RideStatus.Accepted;
+	
+	public void Accept(Ride ride)
+	{
+		throw new InvalidOperationException("Already accepted Ride cannot be Assign");
+	}
+	public void Cancel(Ride ride)
+	{
+		ride.ChangeStatus(RideStatus.Cancelled);
+	}
+	public void Complete(Ride ride)
+	{
+		ride.ChangeStatus(RideStatus.Completed);
+	}
+	public void NoDriverAvailable(Ride ride)
+	{
+		throw new InvalidOperationException("Already accepted Ride");
+	}
+}
+
+public class CancelledState : IRideState
+{
+	public RideStatus Status => RideStatus.Cancelled;
+	
+	public void Accept(Ride ride)
+	{
+		throw new InvalidOperationException("Already Cancelled Ride cannot be Accepted");
+	}
+	public void Cancel(Ride ride)
+	{
+		throw new InvalidOperationException("Already Cancelled Ride Cancelled again");
+	}
+	public void Complete(Ride ride)
+	{
+		throw new InvalidOperationException("Already Cancelled Ride Completed");
+	}
+	public void NoDriverAvailable(Ride ride)
+	{
+		throw new InvalidOperationException("Already Cancelled Ride");
+	}
+}
+
+public class CompletedState : IRideState
+{
+	public RideStatus Status => RideStatus.Completed;
+	
+	public void Accept(Ride ride)
+	{
+		throw new InvalidOperationException("Already Completed Ride");
+	}
+	public void Cancel(Ride ride)
+	{
+		throw new InvalidOperationException("Already Completed Ride");
+	}
+	public void Complete(Ride ride)
+	{
+		throw new InvalidOperationException("Already Completed Ride");
+	}
+	public void NoDriverAvailable(Ride ride)
+	{
+		throw new InvalidOperationException("Already Completed Ride");
+	}
+}
+
+public class NoDriverAvailableState : IRideState
+{
+	public RideStatus Status => RideStatus.NoDriverAvailable;
+	
+	public void Accept(Ride ride)
+	{
+		throw new InvalidOperationException("No Driver Avialable");
+	}
+	public void Cancel(Ride ride)
+	{
+		ride.ChangeStatus(RideStatus.Cancelled);
+	}
+	public void Complete(Ride ride)
+	{
+		throw new InvalidOperationException("Unaccepted Ride by Driver");
+	}
+	public void NoDriverAvailable(Ride ride)
+	{
+		throw new InvalidOperationException("Already NoDriverAvailable ");
+	}
+}
+
+public class RideStateFactory(List<IRideState> states) : IRideStateFactory
+{
+	private Dictionary<RideStatus, IRideState> _states = 
+	states.ToDictionary(state => state.Status);
+
+	public IRideState Create(RideStatus status)
+	{
+		if(!_states.TryGetValue(status, out var state))
+			throw new InvalidOperationException($"{status} has no state exist");
+		return state;
+	}
+}
+
+Domain/Interfaces
+public interface IGenericRepository<T> where T : BaseEntity
+{
+	Task<T?> GetByIdAsync(Guid id);
+	Task<IEnumerable<T>> GetAllAsync();
+	Task AddAsync(T entity);
+	void Update(T entity);
+	void Delete(T entity);
+}
+ 
+public interface IRideRepository : IGenericRepository<Ride>
+{
+	Task<int> GetRideCountForLast15MinutesAsync();
+}
+
+public interface IVehicleRepository : IGenericRepository<Vehicle>
+{
+	Task<Vehicle> GetAvailableVehicleAsync(VehicleType type);
+}
+
+public interface IDriverRepository : IGenericRepository<Driver>
+{
+	Task<Driver> GetAvailableDriverAsync();
+}
+public interface IDriverVehicleRepository : IGenericRepository<DriverVehicle>
+{
+	Task<bool> IsDriverAssignedToAnyRideAsync(Guid driverId);
+	Task<bool> IsVehicleAssignedToAnyRideAsync(Guid vehicleId);
+}
+
+
+public interface IUnitOfWork
+{
+	IGenericRepository<User> Users {get;}
+	IDriverRepository Drivers {get;}
+	IRideRepository Rides {get;}
+	IVehicleRepository Vehicles {get;}
+	IDriverVehicleRepository DriverVehicles {get;}
+
+	Task<int> SaveChangesAsync();	
+}
+
+Infrastructure Layer
+
+Infrastructure/Data
+public void AppDbContext : DbContext
+{
+	public AppDbContext(DbContextOptions<AppDbContext> options): base(options) {}
+
+	public DbSet<User> Users => Set<User>();
+	public DbSet<Driver> Drivers => Set<Driver>();
+	public DbSet<Ride> Rides => Set<Ride>();
+	public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+	public DbSet<DriveVehicle> DriverVehicles => Set<DriveVehicle>();
+
+	protected override OnModelCreating(ModelBuilder builder)
+	{
+		base.OnModelCreating(builder);
+	}
+}
+
+
+Infrastructure/Repositories
+public class GenericRepository<T>(AppDbContext context) : IGenericRepository<T>  where T : BaseEntity
+{
+	private readonly DbSet<T> _dbSet => context.Set<T>(); 
+
+	public async Task<T?> GetByIdAsync(Guid id)
+	{
+		return await _dbSet.FindAsync(id);
+	}
+	public async Task<IEnumerable<T>> GetAllAsync()
+	{
+		return await _dbSet.AsNoTracking().ToListAsync();
+	}
+	public async Task AddAsync(T entity)
+	{
+		await _dbSet.AddAsync(entity);
+	}
+	public void Update(T entity)
+	{
+		_dbSet.Update(entity);
+	}
+	public void Delete(T entity)
+	{
+		_dbSet.Remove(entity);
+	}
+}
+
+
+public class UnitOfWork(AppDbContext context) : IUnitOfWork
+{
+	public IGenericRepository<User> Users {get;} = new GenericRepository<User>(context);
+	public IDriverRepository Drivers {get;} = new DriverRepository(context);
+	public IRideRepository Rides {get;} = new RideRepository(context);
+	public IVehicleRepository Vehicles {get;} = new VehicleRepository(context);
+	public IDriverVehicleRepository DriverVehicles {get;} = new DriverVehicleRepository(context);
+
+	public async Task<int> SaveChangesAsync()
+	{
+		return await context.SaveChangesAsync();
+	}
+}
+
+
+public class RideRepository(AppDbContext context) 
+: GenericRepository<Ride>(context), IRideRepository
+{
+	private readonly DbSet<Ride> _dbSet => context.Set<Ride>();
+
+	public async Task<int> GetRideCountForLast15MinutesAsync()
+	{
+		var before15Minutes = DateTime.Now.AddMinutes(-15);
+
+		return await _dbSet.CountAsync(ride => ride.CreatedAt >= before15Minutes);
+	}
+}
+
+
+public class VehicleRepository(AppDbContext context) 
+: GenericRepository<Vehicle>(context), IVehicleRepository
+{
+	private readonly DbSet<Vehicle> _dbSet => context.Set<Vehicle>();
+
+	public async Task<Vehicle> GetAvailableVehicleAsync(VehicleType type)
+	{
+		return await _dbSet.FirstOrDefaultAsync(x => x.IsOccupied == false && x.Type == type);
+	}
+}
+
+
+public class DriverRepository(AppDbContext context) 
+: GenericRepository<Driver>(context), IDriverRepository
+{
+	private readonly DbSet<Driver> _dbSet => context.Set<Driver>();
+
+	public async Task<Driver> GetAvailableDriverAsync()
+	{
+		return await _dbSet.Where(x => x.IsAvailable == true).FirstOrDefaultAsync();
+	
+	}
+}
+
+
+public class DriverVehicleRepository(AppDbContext context) 
+: GenericRepository<DriverVehicle>(context), IDriverVehicleRepository
+{
+	private readonly DbSet<DriverVehicle> _dbSet => context.Set<DriverVehicle>();
+
+	public async Task<bool> IsDriverAssignedToAnyRideAsync(Guid driverId)
+	{
+		return await _dbSet.DriverVehicles.AnyAsync(x => x.DriverID == driverId && x.IsActive == true);
+	}
+	public async Task<bool> IsVehicleAssignedToAnyRideAsync(Guid vehicleId)
+	{
+		return await _dbSet.DriverVehicles.AnyAsync(x => x.VehicleID == vehicleId && x.IsActive == true);
+	}
+
+}
+
+Application/DTOs
+
+public record CreateRideDto(Guid UserId, VehicleType Type, int DistanceKm);
+public record CompleteRideDto(Guid RideId, DateTime EndedAt);
+public record RideDetailsDto(FareCalculater Fare, int DistanceKm, Guid DriverId);
+public record RideResponseDto(Guid UserId, Guid RideId, RideStatus Status, VehicleType Type, string? VehicleNumber, string? DriverName, string? DriverNumber, int TotalFare);
+public record DriverRideDto(bool Accepted, DateTime? AcceptedAt);
+
+Application/interfaces
+
+public interface IRideService
+{
+	Task<RideResponseDto> CreateRideAsync(CreateRideDto dto);
+	Task CompleteRideAsync(CompleteRideDto dto);
+}
+public interface IDriverService
+{
+	Task<DriverRideDto> AcceptOrRejectRideAsync(RideDetailsDto dto);
+}
+
+
+Application/Services
+
+public class RideService(IUnitOfWork uow, IDistanceCalculater distanceCalculater, IDriverService driverService, IRideStateFactory stateFactory) : IRideService
+{
+	
+	public async Task<RideResponseDto> CreateRideAsync(CreateRideDto dto)
+	{
+		
+		const int surgeAmount = 100;
+
+		var driver = await uow.Drivers.GetAvailableDriverAsync();
+		
+		if(driver == null)
+			throw new NotAvailableException("All Drivers Are Occupied");
+
+		var vehicle = await uow.Vehicles.GetAvailableVehicleAsync(dto.Type);
+		
+		if(vehicle == null)
+			throw new NotAvailableException($"No {dto.Type} Vehicles Available");
+		
+		var isVehicleAssigned = await uow.DriverVehicles.IsVehicleAssignedToAnyRideAsync(vehicle.Id);
+		
+		if(isVehicleAssigned)
+			throw new NotAvailableException($"Vehicle already assigned");
+			
+		var isDriverAssigned = await uow.DriverVehicles.IsDriverAssignedToAnyRideAsync(driver.Id);
+
+		if(isDriverAssigned)
+			throw new NotAvailableException($"Driver already assigned to one vehicle");
+
+		vehicle.AquireVehicle();
+
+		var distanceFare = distanceCalculater.Calculate(dto.DistanceKm);	
+		var baseFare = this.GetBaseFare(dto.Type);
+		
+		var rideCount = await uow.Rides.GetRideCountForLast15MinutesAsync();
+		
+		var surgedFare = this.GetSurgedFare(rideCount, surgeAmount);
+		
+		var calculatedFare = new FareCalculater(baseFare, distanceFare, surgedFare);
+
+		var ride = new Ride(dto.UserId, dto.Type, calculatedFare, stateFactory);
+
+		if(surgedFare == surgeAmount)
+			ride.SetSurged();
+		
+		var rideDetail = new RideDetailsDto(calculatedFare, dto.DistanceKm, driver.Id);
+
+		var IsRideAccepted = await driverService.AcceptOrRejectRideAsync(rideDetail);
+
+
+		
+		if(!IsRideAccepted.Accepted)
+		{
+			vehicle.ReleaseVehicle();
+			driver.SetAvailable();
+	
+			ride.NoDriverAvailable();
+			await uow.Rides.AddAsync(ride);
+			await uow.SaveChangesAsync();
+	
+			return new RideResponseDto(
+				UserId : dto.UserId,
+				RideId : ride.Id,
+				Status : ride.Status,
+				Type : dto.Type,
+				VehicleNumber : null,
+				DriverName : null,
+				DriverNumber : null,
+				TotalFare : calculatedFare.TotalFare
+			);
+		}
+		
+		driver.SetUnavailable();
+		
+		var DriverVehicle = new DriverVehicle(driver.Id, vehicle.Id);
+
+		ride.Accept(DriverVehicle.Id, IsRideAccepted.AcceptedAt.Value);
+		
+		await uow.Rides.AddAsync(ride);
+		await uow.DriverVehicles.AddAsync(DriverVehicle);
+
+		await uow.SaveChangesAsync();
+
+		return new RideResponseDto(
+				UserId : dto.UserId,
+				RideId : ride.Id,
+				Status : ride.Status,
+				Type : dto.Type,
+				VehicleNumber : vehicle.VehicleNumber,
+				DriverName : driver.Name,
+				DriverNumber : driver.Number,
+				TotalFare : calculatedFare.TotalFare
+			);
+	}
+
+	public async Task CompleteRideAsync(CompleteRideDto dto)
+	{
+		var ride = await uow.Rides.GetByIdAsync(dto.RideId);
+		if(ride is null)
+			throw new NotFoundException("Ride not Exist");
+		ride.Complete(dto.EndedAt);
+		
+		var DriverVehicleId = ride.GetDriverVehicleId();
+
+		if(DriverVehicleId is null)
+			throw new InvalidOperationException("Ride has not assigned any Driver or Vehicle");
+
+		var driverVehicle = await uow.DriverVehicles.GetByIdAsync(DriverVehicleId.Value);
+		if(driverVehicle is null)
+			throw new NotFoundException("Driver Vehicle Assignment does not exist");
+		
+		driverVehicle.DeactivateRide();
+
+		var vehicle = await uow.Vehicles.GetByIdAsync(driverVehicle.VehicleId);
+		if(vehicle is null)
+			throw new NotFoundException("Vehicle does not exist");
+		vehicle.ReleaseVehicle();
+			
+		var driver = await uow.Drivers.GetByIdAsync(driverVehicle.DriverId);
+		if(driver is null)
+			throw new NotFoundException("Driver does not exist");
+		driver.SetAvailable();
+	
+		await uow.SaveChangesAsync();
+	}
+
+	private int GetBaseFare(VehicleType type)
+	{
+		Dictionary<VehicleType, int> vehicleFare = new Dictionary<VehicleType, int>{
+			{VehicleType.TwoWheeler, 30},
+			{VehicleType.FourWheeler, 60} 
+		}; 
+	
+		return vehicleFare[type];
+
+	}
+
+	private int GetSurgedFare(int rideCount, int surgeAmount)
+	{	
+		return rideCount > 50 ? surgeAmount : 0 ;	
+
+	}
+
+}
+public class DriverService(IUnitOfWork uow) : IDriverService
+{
+	public async Task<DriverRideDto> AcceptOrRejectRideAsync(RideDetailsDto dto)
+	{
+		var driver = await uow.Drivers.GetByIdAsync(dto.DriverId);
+
+		if(driver is null)
+			throw new KeyNotFoundException("Driver does not exist");
+
+		if(dto.Fare.TotalFare >= 100 || dto.DistanceKm < 5){
+				
+			return new DriverRideDto(true, DateTime.Now);
+		}
+		
+		return new DriverRideDto(false, null);
+	}
+}
+
+LINQ
+( 1 )
+
+var startDate = new DateTime(2026, 6 , 1);
+var endDate = new DateTime(2026, 6 , 30);
+
+var Earning = Ride
+	.Include(x => x.Driver)
+	.Where(x => x.EndedAt >= startDate && x.EndedAt <= endDate)
+	.GroupBy(x => new { Id = x.DriverId, Name = x.Driver.Name})
+	.Select(g => new {
+		Id = g.Key.Id,
+		Name = g.Key.Name,
+		TotalEarnings = g.Sum(x => x.TotalFare); 
+	});

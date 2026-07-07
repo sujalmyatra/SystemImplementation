@@ -1,0 +1,45 @@
+Identity Setup
+https://chatgpt.com/share/69f826aa-5928-8323-a769-8cbc1f12c942
+
+Identity Tables
+https://chatgpt.com/share/69f828f0-ce20-8322-87f1-de7ae53dc6b2
+
+UserManager SignInManager RoleManager
+https://chatgpt.com/share/69f833ad-f274-8323-89cf-b79d4664e0fd
+
+Customizing ASP.NET Core Identity Database
+https://chatgpt.com/share/69f83746-0f28-8323-a104-d230147f7fdf
+
+Register, Login, and Logout using ASP.NET Core Identity(only explaination)
+https://chatgpt.com/share/69f83ae0-c5f0-8323-b0c2-5e1c56c66732
+
+Roles Management
+https://chatgpt.com/share/69f85723-cbdc-8324-b030-21630898bd00
+
+Users Management
+https://chatgpt.com/share/69f8611b-c7d0-8324-b5ee-864079f157bf
+
+Role Based Authorization
+https://chatgpt.com/share/69f86283-16b4-8323-a6c5-c17702694192
+
+Claims Management
+https://chatgpt.com/share/69f8650b-d598-8323-9a4f-b0e8b9382be8
+
+Manage User Claims in ASP.NET Core Identity
+Manage Role Claims in ASP.NET Core Identity
+https://chatgpt.com/share/69f865a9-a0a0-83a3-aa01-d2c96b5de3f9
+
+Claims Based Authorization
+https://chatgpt.com/share/69f866b4-a060-83a6-83de-54aa9305c5e9
+
+Policy-Based Authorization
+https://chatgpt.com/share/69f869f5-ce2c-8323-a4ac-cc81170f1b51
+
+Hybrid Authorization
+https://chatgpt.com/share/69f86a74-be48-8324-b31c-c9510a7e56de
+
+Resource filters
+https://chatgpt.com/share/69f87590-b3fc-8321-8391-d0748c34af4e
+
+JWT authentication
+https://chatgpt.com/share/69f88df7-cc8c-8321-aa26-26481dac0364

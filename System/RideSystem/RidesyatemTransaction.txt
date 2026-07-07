@@ -1,0 +1,54 @@
+RidesyatemTransaction
+public interface IUnitOfWork
+{
+	IGenericRepository<User> Users {get;}
+	IDriverRepository Drivers {get;}
+	IVehicleRepository Vehicles {get;}
+	IRideRepository Rides {get;}
+	IDriverVehicleRepository DriverVehicles {get;}
+	
+	Task BeginTransactionAsync();
+	Task CommitTransactionAsync();
+	Task RollbackTransactionAsync();
+	
+	Task<int> SaveChangesAsync();
+
+}
+public class UnitOfWork(AppDbContext context) : IUnitOfWork
+{
+	private IDbContextTransaction? _tran;
+	
+	public IGenericRepository<User> Users {get;} = new GenericRepository(context);
+	public IDriverRepository Drivers {get;} = new DriverRepository(context);
+	public IVehicleRepository Vehicles {get;} = new VehicleRepository(context);
+	public IRideRepository Rides {get;} = new RideRepository(context);
+	public IDriverVehicleRepository DriverVehicles {get;} = new DriverVehicleRepository(context);
+	
+	public async Task<int> SaveChangesAsync()
+	{ return await context.SaveChangesAsync(); }
+	
+	public async Task BeginTransactionAsync()
+	{
+		_tran = await context.Database.BeginTransactionAsync();	
+	}
+	
+	public async Task CommitTransactionAsync()
+	{
+		if(_tran is null)
+			throw new InvalidOperationException("Transaction not started yet");
+	
+		await context.SaveChangesAsync();
+		await _tran.CommitTransactionAsync();
+		await _tran.DisposeAsync();
+		_tran = null;
+
+	}
+	public async Task RollbackTransactionAsync()
+	{
+		if(_tran is null)
+			return;
+		await _tran.RollbackAsync();
+		await _tran.DisposeAsync();
+		_tran = null;
+	}
+}

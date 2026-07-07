@@ -1,0 +1,42 @@
+ride booking system
+drivers -> cars
+single car can run multiple driver, 
+vehickles= 
+user req ride => user saving STORE RIDES DB-UBOOKING HISTORY EF CORE
+ 
+Base FAIR, SOME FAIR BASED  2 - 30, 4- 60, 
+3 - BASE FAIR - DIST - TIME BASED SERGING 
+2 - REQ 2 30, USER REQ 4 - 60,
+DISTANCE - 10 KM - PER KM RATE, (10RS < 10), (>10 - 9)
+ 
+TIME BASED LAST = BOOKING MORE THAN 50 RIDES IN LAST 15 MINUTES - SERACH PRICING PICK TRAFIC INCREASE PRICING 
+SERGED - APPLICATION LEVEL - +100
+ISACTIVE - 100
+ 
+GENERATE REPORTS - LINQ LIST OF DATA- DRIVER EARNING REPORT => STATER END- END DATE , DRIVER EARNED ,
+ 
+SYSTEM
+BUSIEST HOUR = DATEWISE- PERTICULER TIME WHEN MAXIMUM  BOOKINGS, FILTER = ENDMONTH ALL DATES - SINGLE RECORD INTERVAL MAX BOOKINGS MORE TRAFFIC PIKE HORS - MAX SERGE RIDE WHICH HOURS MAX BOOK RIDES
+ 
+USER REQ - RIDE => NON OF RIDER ACCEPTING REQ HANDLE IT
+==================================================================
+Driver -> multiple cars
+Single Car -> multiple driver (at a time only one driver)
+ 
+User Booking history manage for storing rides for its ride history
+ 
+Fair -> Two Wheeler -> 30rs, Four Wheeler -> 60rs,
+ 
+Also Distance calculation -> 
+Less than 10 km than 10 rs  
+Greater than 10 km than 9rs
+ 
+Application booking Management
+if in last 15 min 50+ rides are there than pricing will include Serged Price as 100 (ISACTIVE)
+ 
+GENERATE REPORTS - LINQ LIST OF DATA- DRIVER EARNING REPORT => STATER END- END DATE , DRIVER EARNED ,
+ 
+SYSTEM
+, BUSIEST HOUR = DATEWISE- PERTICULER TIME WHEN MAXIMUM  BOOKINGS, FILTER = ENDMONTH ALL DATES - SINGLE RECORD INTERVAL MAX BOOKINGS MORE TRAFFIC PIKE HORS - MAX SERGE RIDE WHICH HOURS MAX BOOK RIDES
+ 
+USER REQ - RIDE => NON OF RIDER ACCEPTING REQ HANDLE IT
