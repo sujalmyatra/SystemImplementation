@@ -17,6 +17,7 @@ public class Product : BaseEntity
 	
 	public ICollection<Stock> Stocks {get; set;} = new List<Stock>();
 	public ICollection<StockMovement> StockMovements {get; set;} = new List<StockMovement>();
+	
 }
 
 public class Stock : BaseEntity
@@ -62,16 +63,15 @@ public class Stock : BaseEntity
 		Quantity -= qty;
 	}
 	
-	public void SetWareHouse(Guid id)
-	{
-		WarehouseId = id;
-	}
 }
 
 public class Warehouse : BaseEntity
 {
+	public string Name {get;set;}
 	public string Address {get;set;}
 	public ICollection<Stock> Stocks {get; set;}= new List<Stock>();
+	public ICollection<StockMovement> IncomingMovements {get;set;} = new List<StockMovement>();
+	public ICollection<StockMovement> OutgoingMovements {get; set;} = new List<StockMovement>();
 }
 
 public class Supplier : BaseEntity
@@ -87,8 +87,8 @@ public class StockMovement : BaseEntity, ISoftDeletable
 	public MovementType Type {get; set;}
 	public DateTime MovementDate {get; set;} = DateTime.Now;
 
-	public Guid StockId {get; set;}
-	public Stock Stock {get; set;}
+	public Guid ProductId {get; set;}
+	public Product Product {get; set;}
 
 	public Guid? SupplierId {get; set;}
 	public Supplier? Supplier {get; set;}
@@ -100,6 +100,7 @@ public class StockMovement : BaseEntity, ISoftDeletable
 	public Warehouse? ToWarehouse {get;set;}
 	
 	public bool IsDeleted {get; set;}
+	public int Quantity {get; set;}
 }
 public enum StockStatus
 {
@@ -109,7 +110,7 @@ public enum StockStatus
 }
 public enum MovementType
 {
-	Supp_To_WH,
-	WH_To_WH,
-	WH_To_Supp
+	SupplierToWarehouse,
+	WarehouseToWarehouse,
+	WarehouseToSupplier
 }
