@@ -38,6 +38,49 @@ Ride Created -> Accept, Cancle, NoDriver, Complete
 like providing a filter of month in that month it will show me all the dates- 1st, 2nd June, 3rd June in particular time like 5-6pm there were maximum bookings in our system, in particular time like in 5-6pm there were maximum booking in our system)
 filteration would be for month and year, like 2026 and June show all the dates corresponding to that date
 
+public async Task<List<BusiestHourReportDto>>
+    GetBusiestHourPerDateAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default)
+{
+    DateTime monthStart = new DateTime(year, month, 1);
+    DateTime nextMonthStart = monthStart.AddMonths(1);
+
+    var hourlyBookingCounts = await context.Rides
+        .AsNoTracking()
+        .Where(ride =>
+            ride.CreatedAt >= monthStart &&
+            ride.CreatedAt < nextMonthStart)
+        .GroupBy(ride => new
+        {
+            Date = ride.CreatedAt.Date,
+            Hour = ride.CreatedAt.Hour
+        })
+        .Select(group => new
+        {
+            Date = group.Key.Date,
+            Hour = group.Key.Hour,
+            BookingCount = group.Count()
+        })
+        .ToListAsync(cancellationToken);
+
+    return hourlyBookingCounts
+        .GroupBy(x => x.Date)
+        .Select(dateGroup => dateGroup
+            .OrderByDescending(x => x.BookingCount)
+            .ThenBy(x => x.Hour)
+            .First())
+        .OrderBy(x => x.Date)
+        .Select(x => new BusiestHourReportDto(
+            Date: x.Date,
+            FromTime: TimeSpan.FromHours(x.Hour),
+            ToTime: TimeSpan.FromHours((x.Hour + 1) % 24),
+            BookingCount: x.BookingCount))
+        .ToList();
+}
+
+
 
 if user requesting a ride non of the drivers have accepted the booking handle it Gracefully
 
