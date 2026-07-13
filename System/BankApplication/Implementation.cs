@@ -54,6 +54,38 @@ public abstract class Account : BaseEntity
         AccountNumber = accNumber;
         AnnualInterestRate = annualInterestRate;
     }
+    public decimal AddInterest(DateTime addOn)
+    {
+        CheckAccountIsActive();
+
+        if(LastInterestAddedOn.HasValue && 
+        LastInterestAddedOn.Value.Month == addOn.Month && 
+        LastInterestAddedOn.Value.Year == addOn.Year)
+        {
+            throw new InterestAlreadyAddedException($"Interrest Already Added On {LastInterestAddedOn.Value.Date}");
+        }
+
+        var calculatedInterest = CalculateMonthlyInterest();
+
+        var balanceBefore = Balance;
+
+        Balance += calculatedInterest;  
+
+        LastInterestAddedOn = addOn.Date;
+
+        if(calculatedInterest > 0)
+            AddTransaction(TransactionType.InterestCredit, calculatedInterest, balanceBefore, Balance);
+
+        return calculatedInterest;
+
+    }
+
+    private decimal CalculateMonthlyInterest()
+    {
+        var yearlyInterest = Balance * AnnualInterestRate / 100;
+        return yearlyInterest / 12m;
+
+    }
 
     public void Withdraw(decimal amt)
     {
@@ -83,8 +115,7 @@ public abstract class Account : BaseEntity
         Balance );
     }
 
-    private void AddTransaction(TransactionType transactionType, 
-    decimal amt, decimal bb, decimal ba, DateTime? transactionDate = null)
+    private void AddTransaction(TransactionType transactionType, decimal amt, decimal bb, decimal ba, DateTime? transactionDate = null)
     {
         var transaction = new Transaction(Id, transactionType, amt, bb, ba, transactionDate ?? DateTime.Now);
 
@@ -120,4 +151,115 @@ public class CurrentAccount : Account
 
     public CurrentAccount(string accNumber) : base(accNumber, CurrentInterestRate)
     {}
+}
+public class SuspeciousActivity
+{
+    public Guid AccountId{get; set;}
+    public DateTime TransactionDate{get;set;}
+    public int TransactionCount{get;set;}
+}
+//Infrastructure
+public class AppDbContext : Dbcontext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    { }
+
+    public DbSet<Account> Accounts => DbSet<Account>();
+    public DbSet<Transaction> Transactions => DbSet<Transaction>();
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+
+        builder.Entity<Account>(e =>
+        {
+           e.HasKey(x => x.Id);
+        });
+
+        builder.Entity<Transaction>(e =>
+        {
+           e.HasKey(x => x.Id);
+
+           e.HasOne(x => x.Account)
+           .WithMany(x => x.Transactions)
+           .HasForeignKey(x => x.AccountId)
+           .OnDelete(DeleteBehaviour.Restrict);
+ 
+        });
+    }
+
+    protected override Task<int> SaveChangesAsync()
+    {
+        base.SaveChangesAsync();
+    }
+
+}
+
+//Repository
+public interface IAccountRepository
+{
+    Task<Account?> GetByIdAsync(Guid accountId);
+    Task<List<Account>> GetAllActiveAccountsAsync();
+    Task AddAsync(Account acc);
+}
+public class AccountRepository(AppDbContext context) : IAccountRepository
+{
+    public async Task<Account?> GetByIdAsync(Guid accountId)
+    {
+        return await context.Accounts.FindAsync(accountId);
+    }
+    public Task<List<Account>> GetAllActiveAccountsAsync()
+    {
+        return context.Accounts.Where(x => x.IsActive).ToListAsync();
+    }
+    public async Task AddAsync(Account acc)
+    {
+        await context.Accounts.AddAsync(acc);
+    }
+}
+
+public interface ITransactionRepository
+{
+    Task<List<Transaction>> GetPagedTransactionAsync(Guid accId, int pageNumber, int pagesize);
+    Task<List<Transaction>> GetMiniStatement(Guid accId);
+    Task<List<SuspeciousActivity>> GetSuspeciousActivitiesAsync(DateTime date); 
+
+}
+public class TransactionRepository(AppDbContext context) : ITransactionRepository
+{
+    public Task<List<Transaction>> GetPagedTransactionAsync(Guid accId, int pageNumber, int pagesize)
+    {
+        return context.Transactions
+        .Where(x => x.AccountId == accId)
+        .OrderByDescending(x => x.TransactionDate)
+        .Skip((pageNumber - 1) * pagesize)
+        .Take(pagesize)
+        .ToListAsync();
+    }
+    public Task<List<Transaction>> GetMiniStatement(Guid accId)
+    {
+        return context.Transactions
+        .Where(x => x.AccountId == accId)
+        .OrderByDescending(x => x.TransactionDate)
+        .Take(5)
+        .ToListAsync();
+    }
+    public Task<List<SuspeciousActivity>> GetSuspeciousActivitiesAsync(DateTime from, DateTime to)
+    {
+        DateTime start = from.Date;
+        DateTime endExec = to.AddDays(1);
+
+        return context.Transactions
+        .Where(x => x.TransactionDate >= start && x.TransactionDate < endExec)
+        .GroupBy(x => new{x.AccountId, x.TransactionDate.Date})
+        .Where(g => g.Count() > 5)
+        .Select(g => new SuspeciousActivity
+        {
+            AccountId = g.Key.AccountId,
+            TransactionDate = g.Key.Date,
+            TransactionCount = x.Count()
+        })
+        .ToListAsync();
+
+    }
+
 }

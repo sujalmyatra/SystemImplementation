@@ -1,3 +1,7 @@
+using System.Net.NetworkInformation;
+using System.Numerics;
+using System.Security.Cryptography.X509Certificates;
+
 namespace practce;
 public class Department
 {
@@ -46,5 +50,28 @@ public static void Main()
     var r = employees.GroupJoin(departments, e => e.DepartmentId, d => d.Id, (e, deptgrp) => new { Employee = e, grp = deptgrp })
         .SelectMany(x => x.grp.DefaultIfEmpty(),
                     (x, grp) => new {EmployeeName = x.Employee.Name, Department = grp?.Name ?? "No Department"});
+
+    //3 - Get all departments with employee count. Departments with zero employees should also come.
+    var t = departments.GroupJoin(employees, d => d.Id, e => e.DepartmentId, (d, empgrp) => new {Department = d.Name, EmpCount = empgrp.Count()});
+    t = from d in departments
+        join e in employees
+        on d.Id equals e.DepartmentId into g
+        select new
+        {
+          Department = d.Name,
+          EmpCount = g.Count()
+        };
+
+    //4 = Get department-wise total salary and average salary.
+    var g = employees.GroupBy(x => x.DepartmentId)
+        .Select(x => new {Department = x.Key, Total = x.Sum(c => c.Salary), Avg = x.Average(c => c.Salary)});
+
+    var f = employees
+    .Join(departments, e => e.DepartmentId, d => d.Id, (e, d) => new {Employee = e, DepartmentName = d.Name})
+    .GroupBy(x => x.DepartmentName)
+    .Select(g => new {Department = g.Key, TotalSalary = g.Sum(x => x.Employee.Salary)});
+
+    // 5 - Get all employees with their project names. Employees without projects should also come.
+    
 }
 }

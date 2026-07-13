@@ -142,7 +142,7 @@ public class AppDbContext : DbContext
 		base.SaveChangesAsync();
 		var entries = ChangeTracker.Entries();
 
-		foreach(entry in entries)
+		foreach(var entry in entries)
 		{
 			if(entry.Entity is ISoftDeletable softDeletable){
 				if(entry.State == EntityState.Deleted)
