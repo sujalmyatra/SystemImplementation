@@ -1,0 +1,161 @@
+Develop a Library Management System where members can borrow books, librarians manage inventory, and the system tracks borrowing history, penalties, and reports.
+Requirements
+A Book can have multiple copies.
+At a time, one copy can only be issued to one member.
+A Member can borrow a maximum of 5 books.
+
+Book issue period is 15 days.
+If returned late, charge ₹10 per day.
+If all copies are unavailable, add the member to a waiting list.
+Notify the next member when a book is returned.
+Store complete borrowing history.
+
+Book
+Copy
+Member
+BorrowHistory
+
+public abstract class BaseEntity
+{
+	public Guid Id {get; protected set;} = Guid.NewGuid();
+}
+
+public class Book : BaseEntity
+{
+	public string Title {get; set;}
+	
+	public ICollection<BookCopy> BookCopies {get; set;} = new List<BookCopy>();
+
+}
+
+public class BookCopy  : BaseEntity
+{
+
+	public Guid BookId {get; set;}
+	public Book Book {get; set;}
+	
+	public ICollection<BorrowHistory> BorrowHistorys {get; set;} = new List<BorrowHistory>();
+	
+	public bool IsAvailable{get; set;} = true;
+	
+	public void SetAvailable()
+	{
+		IsAvailable = true;
+	}
+	public void SetUnAvailable()
+	{
+		IsAvailable = false;
+	}
+
+}
+
+public class Member : BaseEntity
+{
+	public string Name{get; set;}
+
+	public ICollection<BookCopy> BookCopies {get; set;} = new List<BookCopy>();
+	
+	public ICollection<BorrowHistory> BorrowHistorys {get; set;} = new List<BorrowHistory>();
+	
+	public Guid? WaitingListId{get; set;}
+	public WaitingList WaitingList {get; set;}
+
+}
+
+public class BorrowHistory : BaseEntity
+{
+	public Guid MemberId{get; set;}
+	public Member Member {get; set;}
+	
+	public Guid BookCopyId{get; set;}
+	public BookCopy BookCopy {get; set;}
+	
+	public DateTime BorrowedAt{get; set;}
+	public DateTime? ReturnedAt{get; set;}
+	public Datetime DueAt{get; set;}
+	
+	public decimal OverDueCharge{get; set;}
+
+	public BorrowHistory(Guid memberId, Guid bookcopyId, DateTime borrowedAt)
+	{
+		MemberId = memberId;
+		BookCopyId = bookcopyId;
+		BorrowedAt = borrowedAt;
+		DueAt = borrowedAt.AddDays(15);
+	}
+	public void Return(DateTime returnDate)
+	{
+		var OverDueDays = returnDate - DueAt;
+		
+		if(OverDueDays > 0)
+		{
+			CalculateOverdueCharge(OverDueDays);
+		}
+		
+		ReturnedAt = returnDate;
+		
+	}
+	
+	private void CalculateOverdueCharge(int overDueDays)
+	{
+		OverDueCharge = overDueDays * 10;
+	}
+}
+
+public class WaitingList : BaseEntity
+{
+	public ICollection<Member> Members {get; set;} = new List<Member>();
+
+}
+
+
+//InfraStrucutre
+
+public class AppDbContext : DbContext
+{
+	
+	public AppDbContext(DbContextOptions<AppDbcontext> options) : base(options)
+	{}
+	
+	public DbSet<Book> Books => DbSet<Book>();
+	public DbSet<Member> Members => DbSet<Member>();
+	public DbSet<BookCopy> BookCopies => DbSet<BookCopy>();
+	public DbSet<BorrowHistory> Books => DbSet<BorrowHistory>();
+	
+	public DbSet<WaitingList> WaitingLists => DbSet<WaitingList>();
+
+	protected override void OnModelCreating(ModelBuilder builder)
+	{
+		base.OnModelCreating(builder);
+
+		ConfigureBorrowHistory(builder);
+	}
+
+	public override Task<int> SaveChangesAsync()
+	{
+		base.SaveChangesAsync();
+	}
+	
+	private static void ConfigureBorrowHistory(ModelBuilder builder)
+	{
+		builder.Entity<BorrowHistory>(e => {
+		
+			e.ToTable("BorrowHistories");
+			e.HasKey(x => x.Id);
+			
+			e.HasOne(x => x.Member)
+			.WithMany(x => x.BorrowHistorys)
+			.HasForeignKey(x => x.MemberId)
+			.OnDelete(DeleteBehaviour.Restrict);
+	
+			e.HasOne(x => x.BookCopy)
+			.WithMany(x => x.BorrowHistorys)
+			.HasForeignKey(x => x.BookCopyId)
+			.OnDelete(DeleteBehaviour.Restrict);
+
+		});
+	}
+	
+
+}
+

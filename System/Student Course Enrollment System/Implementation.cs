@@ -238,18 +238,90 @@ public class AppDbContext : DbContext
                 e.MarkAsDeleted();            
         }
 
-    //Old way
-    //     var entries = ChangeTracker.Entries();
+        //Old way
+        //     var entries = ChangeTracker.Entries();
 
-    // foreach (var entry in entries)
-    // {
-    //     if (entry.Entity is BaseEntity entity &&
-    //         entry.State == EntityState.Deleted)
-    //     {
-    //         entry.State = EntityState.Modified;
-    //         entity.MarkAsDeleted();
-    //     }
-    // }
+        // foreach (var entry in entries)
+        // {
+        //     if (entry.Entity is BaseEntity entity &&
+        //         entry.State == EntityState.Deleted)
+        //     {
+        //         entry.State = EntityState.Modified;
+        //         entity.MarkAsDeleted();
+        //     }
+        // }
     }
+}
 
+public interface IEnrollmentRepository
+{
+    Task<bool> HasActiveEnrollmentsAsync(Guid studentId, Guid courseId);
+    Task<int> CountActiveEnrollmentsAsync(Guid courseId);
+    Task<List<Enrollment>> GetStudentEnrollmentsAsync(Guid studentId);
+    Task<List<Enrollment>> GetStudentEnrollmentsAsync(Guid courseId);
+}
+public class EnrollmentRepository(AppDbContext context) :GenericRepository<Enrollment>(context), IEnrollmentRepository
+{
+    public async Task<bool> HasActiveEnrollmentsAsync(Guid studentId, Guid courseId)
+    {
+        return await context.Enrollments.AnyAsync(x => x.StudentId == studentId &&
+        x.CourseId = courseId && x.Status == EnrollmentStatus.Active
+        );
+    }
+    public async Task<int> CountActiveEnrollmentsAsync(Guid courseId)
+    {
+        return await context.Enrollments.CountAsync(x => x.CourseId == courseId  && x.Status == EnrollmentStatus.Active );
+    }
+    public async Task<List<Enrollment>> GetStudentEnrollmentsAsync(Guid studentId)
+    {
+        return await context.Enrollments
+        .Where(e => e.StudentId == studentId)
+        .Include(c => c.Course).ThenInclude(x => x.Teacher)
+        .OrderByDescending(x => x.EnrollmentDate)
+        .AsNoTracking()
+        .ToListAsync();
+    }
+    public async Task<List<Enrollment>> GetCourseEnrollmentsAsync(Guid courseId)
+    {
+        return await context.Enrollments
+        .Where(x => x.CourseId == courseId)
+        .Include(x => x.Student)
+        .OrderBy(x => x.Student.Name)
+        .AsNoTracking()
+        .ToListAsync();
+    }
+}
+public interface IAttendanceRepository
+{
+    Task<bool> AttendanceExistsAsync(Guid enrollmentId, DateTime attendanceDate);
+    Task<List<Attendance>> GetEnrollmentAttendanceAsync(Guid enrollmentId,DateTime fromDate, DateTime toDate);
+}
+public class AttendanceRepository(AppDbContext context) : GenericRepository<Attendance>(context), IAttendanceRepository
+{
+    public async Task<bool> AttendanceExistsAsync(Guid enrollmentId, DateTime attendanceDate)
+    {
+        return await context.Attendances.AnyAsync(x => x.EnrollmentId == enrollmentId && 
+        x.AttendanceDate == attendanceDate
+        );
+    }
+    public async Task<List<Attendance>> GetEnrollmentAttendanceAsync(Guid enrollmentId,DateTime fromDate, DateTime toDate)
+    {
+        DateTime startDate = fromDate;
+        DateTime endDateExec = toDate.AddDays(1);
+
+        return await context.Attendances
+        .Where(x => x.EnrollmentId == enrollmentId && x.EnrollmentDate >= startDate && x.EnrollmentDate < endDateExec)
+        .AsNoTracking()
+        .ToListAsync();
+    }
+}
+public interface IMarksRepository
+{
+    Task<Marks> GetByEnrollmentIdAsync(Guid enrollmentId);
+    
+}
+
+public interface IAcademicReportRepository
+{
+    
 }
