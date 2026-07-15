@@ -6,6 +6,7 @@ A Member can borrow a maximum of 5 books.
 
 Book issue period is 15 days.
 If returned late, charge ₹10 per day.
+
 If all copies are unavailable, add the member to a waiting list.
 Notify the next member when a book is returned.
 Store complete borrowing history.
@@ -23,8 +24,26 @@ public abstract class BaseEntity
 public class Book : BaseEntity
 {
 	public string Title {get; set;}
+
+	public int TotalCount {get; set;}
+	public int AvailableCount {get; set;}
+	
+	public void IncreaseCopy(int count)
+	{
+		TotalCount += count;
+		AvailableCount += count;
+	}
+	public void DecreaseCopy(int count)
+	{
+		if(AvailableCount < count)
+			throw new InvalidOperationException("Book copy is not available");
+		TotalCount -= count;
+		AvailableCount -= count;
+
+	}
 	
 	public ICollection<BookCopy> BookCopies {get; set;} = new List<BookCopy>();
+	public ICollection<WaitingListEntry> WaitingListEntry {get; set;} = new List<WaitingListEntry>();
 
 }
 
@@ -33,6 +52,9 @@ public class BookCopy  : BaseEntity
 
 	public Guid BookId {get; set;}
 	public Book Book {get; set;}
+	
+	
+	
 	
 	public ICollection<BorrowHistory> BorrowHistorys {get; set;} = new List<BorrowHistory>();
 	
@@ -46,20 +68,37 @@ public class BookCopy  : BaseEntity
 	{
 		IsAvailable = false;
 	}
+	
+
 
 }
 
 public class Member : BaseEntity
 {
 	public string Name{get; set;}
+	public int AquiredBookCount{get; set;}
+	
+	public void IncreaseBookCount()
+	{
+		if(AquiredBookCount == 5)
+			throw new InvlaidOperationException("Member has Reached Max book count");
+
+		AquiredBookCount++;
+	}
+	public void DecreaseBookCount()
+	{
+		if(AquiredBookCount <= 0)
+			throw new InvlaidOperationException("Member has not any book currently");
+
+		AquiredBookCount--;
+	}
+
 
 	public ICollection<BookCopy> BookCopies {get; set;} = new List<BookCopy>();
 	
 	public ICollection<BorrowHistory> BorrowHistorys {get; set;} = new List<BorrowHistory>();
+	public ICollection<WaitingListEntry> WaitingListEntry {get; set;} = new List<WaitingListEntry>();
 	
-	public Guid? WaitingListId{get; set;}
-	public WaitingList WaitingList {get; set;}
-
 }
 
 public class BorrowHistory : BaseEntity
@@ -98,16 +137,45 @@ public class BorrowHistory : BaseEntity
 	
 	private void CalculateOverdueCharge(int overDueDays)
 	{
-		OverDueCharge = overDueDays * 10;
+		OverDueCharge = overDueDays * 10m;
 	}
 }
-
-public class WaitingList : BaseEntity
+If all copies are unavailable, add the member to a waiting list.
+Notify the next member when a book is returned.
+public class WaitingListEntry : BaseEntity
 {
-	public ICollection<Member> Members {get; set;} = new List<Member>();
+	
+	public WaitingStatus Status {get; set;} = WaitingStatus.Waiting;
+
+	public Guid MemberId{get; set;}
+	public Member Member {get; set;}
+	
+	public Guid BookId{get; set;}
+	public Book Book{get; set;}
+	
+	public DateTime RequestedAt{get; set;} = DateTime.Now;
+	public DateTime? NotifiedAt{get; set;}
+	public DateTime? CompletedAt{get; set;}
+	
+	public void Notify(DateTime notify)
+	{
+		NotifiedAt = notify;
+		Status = WaitingStatus.Notified;	
+	}
+	public void Complete(DateTime completedAt)
+	{
+		CompletedAt = completedAt;
+		Status = WaitingStatus.Completed;
+	}
+
 
 }
-
+public Enum WaitingStatus
+{
+	Waiting,
+	Notified,
+	Completed
+}
 
 //InfraStrucutre
 
@@ -122,7 +190,7 @@ public class AppDbContext : DbContext
 	public DbSet<BookCopy> BookCopies => DbSet<BookCopy>();
 	public DbSet<BorrowHistory> Books => DbSet<BorrowHistory>();
 	
-	public DbSet<WaitingList> WaitingLists => DbSet<WaitingList>();
+	public DbSet<WaitingListEntry> WaitingLists => DbSet<WaitingListEntry>();
 
 	protected override void OnModelCreating(ModelBuilder builder)
 	{
@@ -158,4 +226,98 @@ public class AppDbContext : DbContext
 	
 
 }
+
+public interface IGenericRepository<T> where T : BaseEntity
+{
+	Task<T?> GetByIdAsync(Guid id);
+	Task<IEnumerable<T>> GetAllAsync();
+	Task AddAsync(T entity);
+	void Update(T entity);
+	void Delete(T entity);
+
+}
+public class GenericRepository<T>(AppDbContext context) : IGenericRepository<T> where T : BaseEntity
+{
+	private readonly DbSet _set = context.Set<T>();
+	
+	public async Task<T?> GetByIdAsync(Guid id)
+	{
+		return await _set.FindAsync(id);
+	}
+	public async Task<IEnumerable<T>> GetAllAsync()
+	{
+		return await _set.ToListAsync();
+	}
+	public async Task AddAsync(T entity)
+	{
+		await _set.AddAsync(entity);
+	}
+	public void Update(T entity)
+	{
+		_set.Update(entity);
+	}
+	
+	public void Delete(T entity)
+	{
+		_set.Remove(entity);
+	}
+}
+
+public interface IUnitOfWork
+{
+	IGenericRepository<Book> Books{get;}
+	IGenericRepository<BookCopy> Bookscopies{get;}
+	IGenericRepository<Member> Members{get;}
+	IGenericRepository<WaitingListEntry> WaitingListEntrys{get;}
+	IGenericRepository<BorrowHistory> BorrowHistorys{get;}
+	
+	Task<int> SaveChangesAsync();
+	
+}
+	
+public class UnitOfWork(AppDbContext context) : IUnitOfWork
+{
+	public IGenericRepository<Book> Books{get;} = new GenericRepository<Book>(context);
+	public IGenericRepository<BookCopy> Bookscopies{get;} = new GenericRepository<BookCopy>(context);
+	public IGenericRepository<Member> Members{get;} = new GenericRepository<Member>(context);
+	public IGenericRepository<WaitingListEntry> WaitingListEntrys{get;} = new GenericRepository<WaitingListEntry>(context);
+	public IGenericRepository<BorrowHistory> BorrowHistorys{get;} = new GenericRepository<BorrowHistory>(context);
+	
+	public async Task<int> SaveChangesAsync()	
+	{
+		return await context.SavechangesAsync();
+	}
+}
+
+public interface IBookCopyRepository
+{
+	Task<BookCopy?> GetAvailableBookCopyAsync(Guid id);
+	
+	Task<int> GetAquiredBookCountByMemberAsync(Guid memberId);
+}
+public class BookCopyRepository(AppDbContext context) : IBookCopyRepository
+{
+	public async Task<BookCopy?> GetAvailableBookCopyAsync(Guid bookId)
+	{
+		return await context.BookCopies.FirstOrDefaultAsync(x => x.BookId == bookId);
+	}
+	
+	public async Task<int> GetAquiredBookCountByMemberAsync(Guid memberId)
+	{
+		
+
+	}
+}
+
+
+
+public interface IBorrowHistoryRepository
+{
+	Task<BookCopy?> GetAvailableBookCopyAsync(Guid id);
+	
+	Task<int> GetAquiredBookCountByMemberAsync(Guid memberId);
+}
+
+
+
 

@@ -1,3 +1,5 @@
+using System.Net;
+
 public abstract class BaseEntity
 {
     public Guid Id {get; protected set;} = Guid.NewGuid();
@@ -30,7 +32,6 @@ public class Student : BaseEntity
     public string Name {get; set;}
     public ICollection<Enrollment> Enrollments {get; set;} = new List<Enrollment>();
 }
-
 public class Course : BaseEntity
 {
     public int MaxCapacity {get; set;}
@@ -158,7 +159,7 @@ public class AppDbContext : DbContext
     {
          builder.Entity<Teacher>(e =>
         {
-            e.ToTable("Teachers");
+           e.ToTable("Teachers");
 
             e.HasQueryFilter(t => !t.IsDeleted); 
         });    
@@ -321,8 +322,61 @@ public interface IMarksRepository
     Task<Marks> GetByEnrollmentIdAsync(Guid enrollmentId);
     
 }
-
+public class MarksRepository(AppDbContext context) : GenericRepository<Marks>(context), IMarksRepository 
+{
+    public async Task<Marks> GetByEnrollmentIdAsync(Guid enrollmentId)
+    {
+        return await context.Marks.FirstOrDefaultAsync(x => x.EnrollmentId == enrollmentId);
+    }
+    
+}
 public interface IAcademicReportRepository
 {
-    
+   Task<List<CourseStudentCountDto>> CourseWiseStudentCountAsync();
+   Task<StudentCourseHistory> GetStudentCourseHistoryAsync(Guid studentId);
+   Task<TeacherCourseHistory> GetTeacherCourseHistoryAsync(Guid teacherId);
+
+}
+
+public class AcademicReportRepository(AppDbContext context) : IAcademicReportRepository
+{
+    //1
+   public async Task<List<CourseStudentCountDto>> CourseWiseStudentCountAsync()
+    {
+        return await context.Courses
+        .AsNoTracking().Select(x => new CourseStudentCountDto
+        {
+            CourseName = x.Name,
+            ActiveStudentcount = x.Enrollments.Count(x => x.Status == EnrollmentStatus.Active)
+        })
+        .OrderByDescending(x => x.ActiveStudentcount)
+        .ToListAsync();
+    }
+    //2
+    public async Task<StudentCourseHistory> GetStudentCourseHistoryAsync(Guid studentId)
+    {
+        return await context.Enrollments.AsNoTracking()
+        .Where(e => e.StudentId == studentId)
+        .Select(e => new StudentCourseHistory
+        {
+            Course = e.Course.Name,
+            EnrollmentDate = e.EnrollmentDate,
+            Status = e.Status
+        })
+        .OrderBy(x => x.EnrollmentDate)
+        .ToListAsync();
+    }
+    //3
+    public async Task<List<TeacherCourseHistory>> GetTeacherCourseHistoryAsync(Guid teacherId)
+    {
+        return await context.Teachers.GroupJoin(Course, 
+        t => t.Id, c => c.TeacherId, (t, c) => new
+        {
+            TeacherName = t.Name,
+            Courses = c.Select(x => x.CourseName).ToList()
+        })
+        .AsNoTracking()
+        .ToListAsync();
+    }
+
 }
