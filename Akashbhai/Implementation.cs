@@ -23,8 +23,7 @@ public enum PaymentMethod
     UPI,
     Cash,
     Card,
-    Stripe,
-
+    Stripe
 }
 public abstract class BaseEntity
 {
