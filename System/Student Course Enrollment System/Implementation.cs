@@ -30,6 +30,7 @@ public class Student : BaseEntity
     public string Name {get; set;}
     public ICollection<Enrollment> Enrollments {get; set;} = new List<Enrollment>();
 }
+
 public class Course : BaseEntity
 {
     public int MaxCapacity {get; set;}
@@ -157,7 +158,7 @@ public class AppDbContext : DbContext
     {
          builder.Entity<Teacher>(e =>
         {
-           e.ToTable("Teachers");
+            e.ToTable("Teachers");
 
             e.HasQueryFilter(t => !t.IsDeleted); 
         });    
