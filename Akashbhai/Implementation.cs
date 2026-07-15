@@ -1,7 +1,3 @@
-
-
-using System.Dynamic;
-
 public enum PaymentStatus
 {
     Pending,
@@ -22,9 +18,82 @@ public enum PaymentMethod
 {
     UPI,
     Cash,
-    Card,
-    Stripe
+    Card
 }
+public enum PaymentActivity
+{
+    Retry,
+    Succeed,
+    Fail,
+    DuplicateAttempt
+}
+
+public interface IPaymentStrategy
+{
+    PaymentMethod PaymentMethod{get;}
+    Task<PaymentResult> ProcessAsync(PaymentTransaction transaction);
+}
+public class UPIPaymentStrategy : IPaymentStrategy
+{
+    public PaymentMethod PaymentMethod{get;} => PaymentMethod.UPI;
+    public async Task<PaymentResult> ProcessAsync(PaymentTransaction transaction)
+    {
+        await Task.Delay(100);
+
+        return PaymentResult.Success("UPI Payment Successfull");
+    }
+}
+public class CashPaymentStrategy : IPaymentStrategy
+{
+    public PaymentMethod PaymentMethod{get;} => PaymentMethod.Cash;
+    public async Task<PaymentResult> ProcessAsync(PaymentTransaction transaction)
+    {
+        await Task.Delay(100);
+
+        return PaymentResult.Success("Cash Payment Successfull");
+    }
+}
+public class CardPaymentStrategy : IPaymentStrategy
+{
+    public PaymentMethod PaymentMethod{get;} => PaymentMethod.Card;
+    public async Task<PaymentResult> ProcessAsync(PaymentTransaction transaction)
+    {
+        await Task.Delay(100);
+
+        return PaymentResult.Success("Card Payment Successfull");
+    }
+}
+
+public record PaymentResult(bool ISuccessfull, string? TransactionReference, string? ErrorCode, string? Errormessage)
+{
+    public static PaymentResult Success(string transactionReference)
+    {
+        return new PaymentResult(true, transactionReference, null, null);
+    }
+    public static PaymentResult Failure(string errorCode, string errorMessage)
+    {
+        return new PaymentResult(false, null, errorCode, errorMessage);
+    }
+}
+
+public interface IPaymentStrategyFactory
+{
+    IPaymentStrategy GetStrategy(PaymentMethod method);
+}
+public class PaymentStrategyFactory(List<IPaymentStrategy> strategies) : IPaymentStrategyFactory
+{
+    private readonly Dictionary<PaymentMethodm, IPaymentStrategy> _strategies = strategies.ToDictionary(strategy => strategy.PaymentMethod);
+
+    public IPaymentStrategy GetStrategy(PaymentMethod method)
+    {
+        if(!_strategies.TryGetValue(method, out var strategy))
+            throw new InvalidOperationException("Payment Method does not Supported by system");
+
+        return strategy;
+    }
+}
+
+
 public abstract class BaseEntity
 {
     public Guid Id {get; set;} = Guid.NewGuid();
@@ -55,7 +124,7 @@ public class Order : BaseEntity
     }
     public void Cancel()
     {
-        if(Status != OrderStatus.Completed)
+        if(Status == OrderStatus.Completed)
             throw new InvalidOperationException("An Order already completed can not be canceled");
 
         Status = OrderStatus.Cancelled;
@@ -110,23 +179,17 @@ public class PaymentTransaction  : BaseEntity
         Status = status;
     }
 }
-public enum PaymentActivity
-{
-    Retry,
-    Succeed,
-    Fail,
-    DuplicateAttempt
 
-}
 public class PaymentAuditLog : BaseEntity
 {
-    public Guid OrderId {get; set;}
     public Guid PaymentTransactionId {get; set;}
     public  PaymentTransaction  PaymentTransaction {get; set;} = null!;
     public PaymentMethod PaymentMethod{get; set;}
     public PaymentActivity Activity{get; set;}
     public DateTime TimeStamp{get; set;} = DateTime.UtcNow;
 }
+
+
 
 //Infrastructure
 
@@ -146,18 +209,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options ) : DbContext(o
 
             e.HasMany(e => e.PaymentTransactions)
             .WithOne(e => e.Order)
-            .WithForeignKey(e => e.OrderId)
+            .HasForeignKey(e => e.OrderId)
             .OnDelete(DeleteBehaviour.Restrict);
         });
         
-        builder.Entity<PaymentTransaction>(e =>
-        {
-            e.ToTable("PaymentTransactions");
-            e.HasOne(e => e.Order)
-            .WithMany(e => e.PaymentTransaction)
-            .WithForeignKey(e => e.OrderId)
-            .OnDelete(DeleteBehaviour.Restrict);
-        });
+       
         
         builder.Entity<PaymentAuditLog>(e =>
         {
@@ -165,12 +221,183 @@ public class AppDbContext(DbContextOptions<AppDbContext> options ) : DbContext(o
             
             e.HasOne(e => e.PaymentTransaction)
             .WithMany(e => e.PaymentAuditLogs)
-            .WithForeignKey(e => e.PaymentTransactionId)
+            .HasForeignKey(e => e.PaymentTransactionId)
             .OnDelete(DeleteBehaviour.Restrict);
         });
     }
     public override Task<int> SaveChangesAsync()
     {
-        base.SaveChangesAsync();
+        return base.SaveChangesAsync();
+    }
+}
+
+//Reposotories
+public interface IGenericRepository<T>
+    where T : BaseEntity
+{
+    Task<T?> GetByIdAsync(
+        Guid id);
+
+    Task<IEnumerable<T>> GetAllAsync();
+
+    Task AddAsync(T entity);
+
+    void Update(T entity);
+
+    void Delete(T entity);
+}
+
+public class GenericRepository<T> : IGenericRepository<T>
+    where T : BaseEntity
+{
+    protected readonly AppDbContext Context;
+    protected readonly DbSet<T> DbSet;
+
+    public GenericRepository(AppDbContext context)
+    {
+        Context = context;
+        DbSet = context.Set<T>();
+    }
+
+    public async Task<T?> GetByIdAsync(
+        Guid id)
+    {
+        return await DbSet.FindAsync(id);
+    }
+
+    public async Task<IEnumerable<T>> GetAllAsync()
+    {
+        return await DbSet
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    public async Task AddAsync(T entity)
+    {
+        await DbSet.AddAsync(entity);
+    }
+
+    public void Update(T entity)
+    {
+        DbSet.Update(entity);
+    }
+
+    public void Delete(T entity)
+    {
+        DbSet.Remove(entity);
+    }
+}
+
+public interface IUnitOfWork
+{
+    IOrderRepository Orders {get;}
+    IPaymentTransactionRepository PaymentTransactions {get;}
+    IGenericRepository<PaymentAuditLog> PaymentAuditLogs {get;}
+
+    Task<int> SaveChangesAsync();
+
+}
+public class UnitOfWork(AppDbContext context) : IUnitOfWork
+{
+    public IOrderRepository Orders {get;} = new OrderRepository(context);
+    public IPaymentTransactionRepository PaymentTransactions {get;}
+     = new PaymentTransactionRepository(context);
+    public IGenericRepository<PaymentAuditLog> PaymentAuditLogs {get;}
+     = new GenericRepository<PaymentAuditLog>(context);
+
+    public async Task<int> SaveChangesAsync()
+    {
+        return await context.SaveChangesAsync();
+    }
+}
+
+//specialized Reposotories
+public interface IOrderRepository : IGenericRepository<Order>
+{
+    Task<Order?> GetWithTransactionsAsync(
+        Guid orderId);
+}
+
+public class OrderRepository
+    :GenericRepository<Order>, IOrderRepository
+{
+    public async Task<Order?> GetWithTransactionsAsync(
+     Guid orderId)
+    {
+        return await context.Orders.Include(x => x.PaymentTransactions)
+        .FirstOrDefaultAsync(x => x.OrderId == orderId);
+    }
+}
+
+public interface IPaymentTransactionRepository : IGenericRepository<PaymentTransaction>
+{
+    Task<bool> HasSuccessfulPaymentAsync(
+        Guid orderId);
+}
+
+public class PaymentTransactionRepository(AppDbContext context) : GenericRepository<PaymentTransaction>, IPaymentTransactionRepository
+{
+    public async Task<bool> HasSuccessfulPaymentAsync(
+        Guid orderId)
+    {
+        return await context.PaymentTransactions.AnyAsync(x => x.OrderId == orderId &&
+        x.Status == PaymentStatus.Success
+        );
+    }
+}
+
+//Service
+public interface IPaymentService
+{
+    Task<PaymentResult> ProcessPaymentAsync(Guid orderId,PaymentMethod paymentMethod);
+}
+public class PaymentService(IUnitOfWork uow, IPaymentStrategyFactory factory) : IPaymentService
+{
+    public async Task<PaymentResult> ProcessPaymentAsync(Guid orderId,PaymentMethod paymentMethod)
+    {
+        var order = await uow.Orders.GetByIdAsync(orderId);
+
+        if(order is null)
+            return PaymentResult.Failure("ORDER_NOT_FOUND","Order was not found");
+        
+        bool alreadyPaidOrder = await uow.PaymentTransactions.HasSuccessfulPaymentAsync(order.Id);
+
+        if(alreadyPaidOrder)
+            return PaymentResult.Failure("Duplicate_Payment", "ORder has been already Paid");
+
+        var transaction = new PaymentTransaction
+        {
+            OrderId =  order.Id,
+            Amount = order.TotalAmount,
+            PaymentMethod = paymentMethod
+        };
+
+        await uow.PaymentTransactions.AddAsync(transaction);
+
+        transaction.StartProcessing();
+
+        IPaymentStrategy strategy = factory.GetStrategy(paymentMethod);
+
+        PaymentResult result = await strategy.ProcessAsync(transaction);
+
+
+        if(result.ISuccessfull)
+        {
+            transaction.MarkAsSuccessfull();
+            order.Confirm();
+
+            transaction.paymentAuditLogs.Add(new PaymentAuditLog{PaymentMethod = paymentMethod,
+            Activity = PaymentActivity.Succeed});
+        }
+        else
+        {
+            transaction.MarkAsFailed(result.ErrorCode, result.Errormessage);
+            transaction.paymentAuditLogs.Add(new PaymentAuditLog{PaymentMethod = paymentMethod,
+            Activity = PaymentActivity.Fail});
+        }
+
+        await uow.SaveChangesAsync();
+
+        return result;
     }
 }
