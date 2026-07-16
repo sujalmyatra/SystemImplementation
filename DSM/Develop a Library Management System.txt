@@ -1,6 +1,7 @@
 Develop a Library Management System where members can borrow books, librarians manage inventory, and the system tracks borrowing history, penalties, and reports.
 Requirements
 A Book can have multiple copies.
+
 At a time, one copy can only be issued to one member.
 A Member can borrow a maximum of 5 books.
 
@@ -266,10 +267,10 @@ public class GenericRepository<T>(AppDbContext context) : IGenericRepository<T> 
 public interface IUnitOfWork
 {
 	IGenericRepository<Book> Books{get;}
-	IGenericRepository<BookCopy> Bookscopies{get;}
+	IBookCopyRepository Bookscopies{get;}
 	IGenericRepository<Member> Members{get;}
-	IGenericRepository<WaitingListEntry> WaitingListEntrys{get;}
-	IGenericRepository<BorrowHistory> BorrowHistorys{get;}
+	IWaitingListEntryRepository WaitingListEntrys{get;}
+	IBorrowHistoryRepository BorrowHistorys{get;}
 	
 	Task<int> SaveChangesAsync();
 	
@@ -278,10 +279,10 @@ public interface IUnitOfWork
 public class UnitOfWork(AppDbContext context) : IUnitOfWork
 {
 	public IGenericRepository<Book> Books{get;} = new GenericRepository<Book>(context);
-	public IGenericRepository<BookCopy> Bookscopies{get;} = new GenericRepository<BookCopy>(context);
+	public IBookCopyRepository Bookscopies{get;} = new BookCopyRepository(context);
 	public IGenericRepository<Member> Members{get;} = new GenericRepository<Member>(context);
-	public IGenericRepository<WaitingListEntry> WaitingListEntrys{get;} = new GenericRepository<WaitingListEntry>(context);
-	public IGenericRepository<BorrowHistory> BorrowHistorys{get;} = new GenericRepository<BorrowHistory>(context);
+	public IWaitingListEntryRepository WaitingListEntrys{get;} = new WaitingListEntryRepository(context);
+	public IBorrowHistoryRepository BorrowHistorys{get;} = new BorrowHistoryRepository(context);
 	
 	public async Task<int> SaveChangesAsync()	
 	{
@@ -289,35 +290,111 @@ public class UnitOfWork(AppDbContext context) : IUnitOfWork
 	}
 }
 
-public interface IBookCopyRepository
+public interface IBookCopyRepository : IGenericRepository<BookCopy>
 {
 	Task<BookCopy?> GetAvailableBookCopyAsync(Guid id);
 	
-	Task<int> GetAquiredBookCountByMemberAsync(Guid memberId);
+	Task<int> GetTotalBookCopyCountAsync(Guid bookId);
+	Task<int> GetAvailableBookCopyCountAsync(Guid bookId);
+
 }
 public class BookCopyRepository(AppDbContext context) : IBookCopyRepository
 {
-	public async Task<BookCopy?> GetAvailableBookCopyAsync(Guid bookId)
+	public async Task<BookCopy?> GetAvailableBookCopyAsync(Guid id)
 	{
-		return await context.BookCopies.FirstOrDefaultAsync(x => x.BookId == bookId);
+		return await context.BookCopies.where(x => x.BookId == bookId && x.IsAvailable).FirstOrDefaultAsync();
 	}
-	
-	public async Task<int> GetAquiredBookCountByMemberAsync(Guid memberId)
+	public async Task<int> GetTotalBookCopyCountAsync(Guid bookId)
 	{
+		return await context.BookCopies
+		.Count(x => x.BookId == bookId);
 		
+	}
+	public async Task<int> GetAvailableBookCopyCountAsync(Guid bookId)
+	{
+		return await context.BookCopies
+		.Count(x => x.BookId == bookId && x.IsAvailable);
+	}
 
+}
+public interface IBorrowHistoryRepository : IGenericRepository<BorrowHistory>
+{
+	Task<int> GetMemberWithBookCopyCountAsync(Guid memberId);
+	
+	Task<BorrowHistory?> GetMemberWithBookCopyAsync(Guid memberId, Guid bookId);
+}
+
+public class BorrowHistoryRepository(AppDbContext context) :GenericRepository<BorrowHistory>(context), IBorrowHistoryRepository
+{
+	public async Task<int> GetMemberWithBookCopyCountAsync(Guid memberId){
+		return await context.BorrowHistories.Count(x => x.MemberId == memberId && x.ReturnedAt == null);
+	}
+	
+	public async Task<BorrowHistory?> GetMemberWithBookCopyAsync(Guid memberId, Guid bookId)
+	{
+		return await context.BorrowHistories
+		.Where(x => x.MemberId == memberId && x.BookCopyId == bookId)
+		.FirstOrDefaultAsync();
 	}
 }
 
 
-
-public interface IBorrowHistoryRepository
+public interface IWaitingListEntryRepository : IGenericRepository<WaitingListEntry>
 {
-	Task<BookCopy?> GetAvailableBookCopyAsync(Guid id);
+	Task<WaitingListEntry?> GetMemberWithBookWaitingAsync(Guid memberId, Guid bookId);
 	
-	Task<int> GetAquiredBookCountByMemberAsync(Guid memberId);
+}
+public class WaitingListEntryRepository(AppDbContext context) : GenericRepository<WaitingListEntry>, IWaitingListEntryRepository
+{
+	public async Task<WaitingListEntry?> GetMemberWithBookWaitingAsync(Guid memberId, Guid bookId)
+	{
+		return await context.WaitingListEntrys
+		.Where(x => x.MemberId = memberId && x.BookId == bookId && x.Status == WaitingStatus.Waiting)
+		.OrderByDescending(x => x.RequestedAt)
+		.FirstOrDefaultAsync();
+	}
 }
 
+//Service
+
+public interface IBorrowBookService
+{
+	Task<BookCopy?> GetRequestedBookCopy(Guid memberId, Guid bookId);
+}
+public class BorrowBookService(IUnitOfWork uow) : IBorrowBookService
+{
+	public async Task<MemberWithBookCopyResponseDto> GetRequestedBookCopy(Guid memberId, Guid bookId)
+	{
+		var member = await uow.Members.GetByIdAsync(memberId);
+
+		if(member is null)
+			throw new KeyNotFoundException("Member is not Registrd in system");
+
+		var AvailableBookCount = await uow.BookCopies.GetAvailableBookCopyCountAsync(bookId);
+
+		if(AvailableBookCount == 0)
+			uow.WaitingListEntry.AddAsync(new WaitingListEntry{MemberId = member.Id, BookId = bookId});
+		
+		var MemberWithBookCopyCount = await uow.BorrowHistorys.GetMemberWithBookCopyCountAsync(member.Id);
+
+		if(MemberWithBookCopyCount >= 5)
+			throw new InvalidOperationException("Member has reached Maximum Count Of Books");
+		
+		var AvailableBookCopy = await uow.BookCopies.GetAvailableBookCopyAsync(bookId);
+
+		var borrowbook = new BorrowHistory
+		{
+			MemberId = member.Id,
+			BookCopyId = AvailableBookCopy.Id,
+			BorrowedAt = DateTime.Now
+		};
+
+		await uow.BorrowHistorys.AddAsync(borrowbook);
+
+		await uow.SaveChangesAsync();
+
+	}
+}
 
 
 

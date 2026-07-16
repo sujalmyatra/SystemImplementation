@@ -8,7 +8,6 @@ public interface IDistanceCalculater
 	int Calculate(int distanceKm);
 }
 
-
 Domain/Exceptions
 public class NotAvailableException(string message) : Exception(message)
 { } 

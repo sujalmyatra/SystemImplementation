@@ -104,7 +104,7 @@ public class Order : BaseEntity
     public OrderStatus Status{get; set;}
     public Guid CustomerId{get; set;}
     public decimal TotalAmount{get; set;}
-    public DateTime CreatedAt{get; set;}
+    public DateTime CreatedAt{get; set;}//baseenitty
     public DateTime? ConfirmedAt{get; set;}
     public ICollection<PaymentTransaction> PaymentTransactions{get; set;}
     = new List<PaymentTransaction>();

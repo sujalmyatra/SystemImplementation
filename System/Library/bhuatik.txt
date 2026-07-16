@@ -165,11 +165,6 @@ var members = context.Members
     .ToList();
 
 
-
-
-
-
-
 shivang 
 system 
 inventory & warehouse system
