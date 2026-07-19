@@ -1,4 +1,6 @@
-using System.Net;
+
+
+using System.Collections.Frozen;
 
 public enum AssetStatus
 {
@@ -222,7 +224,7 @@ public class GenericRepository<T>(AppDbContext context) : IGenericRepository<T> 
 public interface IUnitOfWork
 {
     IGenericRepository<Employee> Employees {get;}
-    IGenericRepository<Asset> Assets {get;} 
+    IAssetRepository Assets {get;} 
     IGenericRepository<AssetAssignment> AssetAssignments {get;} 
     IGenericRepository<AssignmentHistory> AssignmentHistorys {get;} 
     IGenericRepository<MaintenanceRecord> MaintenanceRecords {get;} 
@@ -232,7 +234,7 @@ public interface IUnitOfWork
 public class UnitOfWork(AppDbContext context) : IUnitOfWork
 {
     public IGenericRepository<Employee> Employees {get;} = new GenericRepository<Employee>(context);
-    public IGenericRepository<Asset> Assets {get;}  = new GenericRepository<Employee>(Asset);
+    public IAssetRepository Assets {get;}  = new AssetRepository(context);
     public IGenericRepository<AssetAssignment> AssetAssignments {get;}  = new GenericRepository<AssetAssignment>(context);
     public IGenericRepository<AssignmentHistory> AssignmentHistorys {get;}  = new GenericRepository<AssignmentHistory>(context);
     public IGenericRepository<MaintenanceRecord> MaintenanceRecords {get;}  = new GenericRepository<MaintenanceRecord>(context);
@@ -243,14 +245,27 @@ public class UnitOfWork(AppDbContext context) : IUnitOfWork
     }
 }
 
+public interface IAssetRepository : IGenericRepository<Asset>
+{
+    Task<Asset?> GetAvailableAssetAsync(AssetType type);
+}
+public class AssetRepository(AppDbContext context) : GenericRepository<Asset>(context), IAssetRepository
+{
+    public async Task<Asset?> GetAvailableAssetAsync(AssetType type)
+    {
+        return await context.Assets.Where(x => x.Status == AssetStatus.Available && x.AssetType == type).FirstOrDefaultAsync();
+    }
+}
 public interface IAssetAssignmentRepository : IGenericRepository<AssetAssignment>
 {
     
 }
+
 public class AssetAssignmentRepository(AppDbContext context) : GenericRepository<AssetAssignment>(context), IAssetAssignmentRepository
 {
     
 }
+
 public interface IAssignmentHistoryRepository : IGenericRepository<AssignmentHistory>
 {
     
@@ -260,7 +275,6 @@ public class AssignmentHistoryRepository(AppDbContext context) : GenericReposito
 {
     
 }
-
 
 public interface IMaintenanceRecordRepository : IGenericRepository<MaintenanceRecord>
 {
@@ -272,6 +286,118 @@ public class MaintenanceRecordRepository(AppDbContext context) : GenericReposito
     
 }
 
+public interface IAssetService
+{
+    Task<AssetAssignmentResponseDto> RequestAssetAsync(Guid employeeId, AssetType assetType);
+}
+public record AssetAssignmentResponseDto(Guid EmployeeId, Guid? AssetId,DateTime? AssignedTime, string Message);
+public class AssetService(IUnitOfWork uow) : IAssetService
+{
+    public async Task<AssetAssignmentResponseDto> RequestAssetAsync(Guid employeeId, AssetType assetType)
+    {
+        var member = await uow.Employees.GetByIdAsync(employeeId);
+
+        if(member is null)
+            throw new KeyNotFoundException($"Employee with {employeeId} not Found");
+
+        var asset = await uow.Assets.GetAvailableAssetAsync(type);
+
+        if(asset is null)
+             return new AssetAssignmentResponseDto(employeeId, null, null, $"Requested Asset of {type} is not available RightNow");
+
+        DateTime AssignmentTime = DateTime.UtcNow;
+
+        var assetAssignment = new AssetAssignment{EmployeeId = employeeId, AssetId = asset.Id, AssignedAt = AssignmentTime};
+
+        asset.Status = AssetStatus.Assigned;
+
+        await uow.AssetAssignments.AddAsync(assetAssignment);
+
+        await uow.SaveChangesAsync();
+
+        return new AssetAssignmentResponseDto(employeeId, asset.Id, AssignmentTime, "Asset Assignment Successfull" );
+    }
+}
+
+public interface IEmployeeService
+{
+    Task<EmployeeDto> CreateAsync(CreateEmployeeDto request);
+    Task<EmployeeDto?> GetEmployeeByIdAsync(Guid employeeId);
+    Task<List<EmployeeDto>> GetAllEmployeesAsync();
+    Task<EmployeeDto> CreateAsync(CreateEmployeeDto request);
+    Task UpdateAsync(UpdateEmployeeDto request);
+    Task DeleteAsync(Guid id);
+}
+public class  EmployeeService(IUnitOfWork uow, ILogger<EmployeeService> logger) : IEmployeeService
+{
+    public async Task<EmployeeDto> CreateAsync(CreateEmployeeDto request)
+    {
+        var emp = new Employee{Name = request.Name, Department = request.Department};
+
+        await uow.Employees.AddAsync(emp);
+
+        await uow.SaveChangesAsync();
+
+        logger.LogInformation($"Employee Created {emp.Name}, Department : {emp.Department}");
+
+        return new EmployeeDto(emp.Id, emp.Name, emp.Department);
+    }
+    public async Task<EmployeeDto?> GetEmployeeByIdAsync(Guid employeeId)
+    {
+        var emp = await uow.Employees.GetByIdAsync(employeeId);
+
+        if(emp is null)
+        {
+            logger.LogError($"Employee with ID : {employeeId} Not Found");
+            return null;
+        }
+
+        return new EmployeeDto(emp.Id,emp.Name,emp.Department);
+    }
+    public async Task<List<EmployeeDto>> GetAllEmployeesAsync()
+    {
+        var employees = await uow.Employees.GetAllAsync();
+
+        return new employees.Select(x => new EmployeeDto(x.Id, x.Name, x.Department)).ToList();
+    }
+    public async Task<EmployeeDto> CreateAsync(CreateEmployeeDto request);
+    public async Task UpdateAsync(Guid id, UpdateEmployeeDto request)
+    {
+        var emp = await uow.Employees.GetByIdAsync(id);
+
+        if(emp is null)
+        {
+            logger.LogError($"Employee with ID : {employeeId} Not Found");
+            throw new KeyNotFoundException($"Employee with {id} not found");
+        }
+        
+        emp.Name = request.Name;
+        emp.Department = request.Department;
+
+        uow.Employees.Update(emp);
+
+        await uow.SaveChangesAsync();
+
+        logger.LogInformation($"Employee with ID : {employeeId} Updated");
+
+    }
+    public async Task DeleteAsync(Guid id)
+    {
+         var emp = await uow.Employees.GetByIdAsync(id);
+
+        if(emp is null)
+        {
+            logger.LogError($"Employee with ID : {employeeId} Not Found");
+            throw new KeyNotFoundException($"Employee with {id} not found");
+        }
+
+        uow.Employees.Delete(emp);
+
+        await uow.SaveChangesAsync();
+
+        logger.LogInformation($"Employee with ID : {employeeId} Deleted");
+    }
+}
 public class GlobalExceptionMiddleware
 {
     private readonly RequestDelegate _next;
@@ -306,3 +432,94 @@ public class GlobalExceptionMiddleware
     }
     //app.UseMiddleware<GlobalExceptionMiddleware>();
 }
+public interface IAssetReportRepository
+{
+    Task<List<EmployeeAssetReportDto>> GetEmployeeWiseAssetReportAsync();
+    Task GetAssetStatusReportAsync();
+}
+public record EmployeeAssetReportDto(Guid EmpId, string Name, List<string> Assets);
+
+public class AssetReportRepository(AppDbContext context) : IAssetReportRepository
+{
+    public async Task<List<EmployeeAssetReportDto>> GetEmployeeWiseAssetReport()
+    {
+        //1. Employee-wise Asset Report
+
+        var query = from e in context.Employees
+            join a in context.AssetAssignments.Where(assignment => assignment.IsActive)
+            on e.Id equals a.EmployeeId
+            into employeeAssignments
+
+            select new EmployeeAssetReportDto(
+                e.Id,
+                e.Name,
+                employeeAssignments.Select(x => x.Asset.AssetCode).ToList()
+            );
+
+        var rows = context.Employees.LeftJoin(
+            context.AssetAssignments.Where(x => x.IsActive),
+            e => e.Id, a => a.EmployeeId, 
+            (e, a) => new 
+            (e.Id, e.Name, AssetCode = a == null ? null : a.Asset.AssetCode))
+         .AsNoTracking()
+         .ToListAsync();
+
+         rows.GroupBy(row => new {row.Id, row.Name})
+         .Select(e => new EmployeeAssetReportDto(e.Key.Id, e.Key.Name, e.Select(x => x.AssetCode).ToList()));
+
+        //Projection
+        return await context.Employees
+        .Select(x => new EmployeeAssetReportDto(
+            x.Id, x.Name,
+            x.AssetAssignments
+            .Where(x => x.IsActive)
+            .Select(x => x.Asset.AssetCode).ToList()))
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    public async Task<List<AssetStatusReport>> GetAssetStatusReportAsync()
+    {
+        var statusCounts = await context.Assets
+        .AsNoTracking()
+        .GroupBy(asset => asset.Status)
+        .ToDictionaryAsync(
+            group => group.Key,
+            group => group.Count()
+        );
+
+        return Enum.GetValues<AssetStatus>()
+            .Select(st => new 
+            AssetStatusReport(
+                st, 
+                statusCounts.GetValueOrDefault(st)))
+            .ToList();
+    }
+
+    public async Task<AssetHistoryDto?> GetAssetHistoryReportByIdAsync(Guid assetId)
+    {
+        var asset =  await context.Assets
+        .Where(asset => asset.Id == assetId)
+        .Select(asset => new (
+            Type = asset.AssetType,
+            asset.AssetCode,
+            Histories = asset.AssignmentHistories.Select(x => EmployeeName = x.Employee.Name, x.AssignedAt, x.ReturnedAt).ToList()
+        )).SingleOrDefaultAsync();
+
+        if(asset is null)
+            return null;
+        
+        var history = asset.Histories.Select(history => GetConstructedStatement(history.EmployeeName, history.AssignedAt, history.ReturnedAt )).ToList();
+
+        return new AssetHistoryDto(asset.Type, asset.AssetCode, history);
+    }
+    public record AssetHistoryDto(AssetType Type, string AssetCode, List<string> AssignmentHistories);
+    private string GetConstructedStatement(string empName, DateTime from, DateTime to)
+    {
+        return $"Assigned to Employee :: {empName} from {from.Date} to {to.Date}";
+    }
+
+}
+public record AssetStatusReport(AssetStatus Status, int AssetCount);
+
+//1
