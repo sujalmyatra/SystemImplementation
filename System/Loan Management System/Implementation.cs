@@ -326,3 +326,13 @@ public record EmiCollectionDto(string Month, int TotalRevenue);
 
 
 
+//Guid -> https://chatgpt.com/share/6a5dac09-a700-83ee-9396-b1b6df3feff0
+//builder.HasKey(x => x.Id)
+//builder.Property(x => x.Id).ValueGeneratedOnAdd();
+// builder.HasKey(x => x.Id);
+
+// builder.Property(x => x.Id)
+//     .ValueGeneratedOnAdd();
+
+//One to One RelationShip 
+// https://chatgpt.com/share/6a5dac17-e37c-83e8-94c2-b04156eea5de

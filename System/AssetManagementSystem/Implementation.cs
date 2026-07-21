@@ -518,8 +518,8 @@ public class AssetReportRepository(AppDbContext context) : IAssetReportRepositor
     {
         return $"Assigned to Employee :: {empName} from {from.Date} to {to.Date}";
     }
-
 }
+
 public record AssetStatusReport(AssetStatus Status, int AssetCount);
 
 //1
