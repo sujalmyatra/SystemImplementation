@@ -126,7 +126,7 @@ public class Payment : BaseEntity
    public PaymentStatus Status {get; set;} = Payment.Pending;
 
 
-    public string? TransactionRefrence{get; set;}
+   public string? TransactionRefrence{get; set;}
    public DateTime? PaidAt{get; set;}
    public DateTime? Refunded{get; set;}
 

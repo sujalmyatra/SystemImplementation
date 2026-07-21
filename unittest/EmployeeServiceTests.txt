@@ -1,0 +1,94 @@
+public class EmployeeServiceTests
+{
+	private readonly Mock<IUnitOfWork> _uow;
+	priavet readonly Mock<IGenericRepository<Employee>> _repoMock;
+	private readonly EmployeeService _service;
+	
+	public EmployeeServiceTests()
+	{
+		_uow = new Mock<IUnitOFWork>();	
+		_repo = new Mock<IGenericRepository<Employee>>();
+
+		_uow.Setup(x => x.Employees).Returns(_repo.Object);
+		
+		_service = new EmployeeService(_uow.Object);
+	}
+	
+	[Fact]
+	public async Task CreateEmployeeAsync_ShouldCreateEmployee()
+	{
+		var dto = new CreateEmployeeDto("Sujal", 50000, 1);
+			
+		Employee? addedEmployee = null;
+	
+		_repo.Setup(x => x.AddAsync(It.IsAny<Employee>()))
+			.Callback<Employee>(emp => {addedEmployee = emp})
+			.Returns(Task.CompletedTask);
+
+		var result = await _service.CreateEmployeeAsync(dto);
+
+		Assert.NotNull(result);
+
+		Assert.NotNull(addedEmployee);
+		
+		Assert.Equal(result.Name, addedEmployee.Name);
+		Assert.Equal(result.Email, addedEmployee.Email);
+
+		_repo.Verify(x => x.AddAsync(It.IsAny<Employee>()),
+			Times.Once);
+		
+	}
+}
+
+
+
+
+
+
+private readonly Mock<IGenericRepository<Employee>> _repoMock;
+private readonly EmployeeService _service;
+
+public EmpServicetest()
+{
+	_repoMock = new Mock<IGenericRepo<Employee>>();
+	_service = new EmployeeService(_repoMock.Object);
+}
+
+
+public async Task CreateEmployeAsync_ShouldCreateEmployee()
+{
+	var dto = EmployeeDto("s", 5000, 1);	
+		
+	_repoMock.Setup(repo => repo.AddASync(It.IsAny<Employee>())).Returns(Task.CompletedTask);
+
+
+var result = await _service.CreateEmployeeAsync(dto);
+
+Assert.NotNull(result);
+Assert.Equal(dto.Name, result.Name);
+
+_repoMock.Verify(repo => repo.AddAsync(It.Is<Employee>(emp => emp.Name == dto.Name && emp.Salary == dto.Salary)), Times.Once);
+}
+
+[Fact]
+public async Task UpdateEmployeeAsync_ShouldUpdateEmplyee_WhenEmployeeExists()
+{
+	
+	var employeeId = Guid.NewGuid();
+	
+	var emp = new Employee(employeeId, "sujal", 40000, Department.IT);
+	
+	var dto = new UpdateEmployeeDto(employeeId, "sujal", 45000, Department.IT);
+	
+	_repoMock.Setup(repo => repo.GetByIdASync(employeeId))
+		.ReturnsAsync(employee);
+
+	//Act
+	var result = await _service.UpdateEmployeeAsync(dto);
+
+	Assert.NotNull(result);
+
+	Assert.Equal(dto.Name, result.NAme);
+
+	_repoMock.Verify(repo => repo.Update(employee), Times.Once);
+}
