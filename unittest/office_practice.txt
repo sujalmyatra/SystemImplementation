@@ -1,0 +1,130 @@
+public class EmployeeServiceTests
+{
+	private readonly Mock<IGenericRepo<Employee>> _repoMock;
+	privat readonly Employee _service;
+	
+	public EmployeeServiceTests()
+	{
+		_repoMock = new Mock<IGenericRepo<Employee>>();
+		_service = new EmployeeService(_repoMock.Object); 
+	}
+
+	[Fact]
+	public async Task CreateemployeeAsync_ShouldCreateEmployee()
+	{
+		var dto = new EmployeeDto("Sujal", 4000, "sujl@gmail.com");
+		
+		//arrange
+		_repoMock.Setup(x => x.AddAsync(It.IsAny<Employee>()))
+			.Returns(Task.CompletedTask);
+		//Act
+		var result = await _service.CreateEmployeeAsync(dto);
+		
+		//Assert
+		Assert.NotNull(result);
+		Assert.Equal(dto.Name, result.Name);
+		Assert.Equal(dto.Salary, result.Salary);
+		Assert.Equal(dto.Email, result.Email);
+
+		_repoMock.Verify(x => x.AddAsync(It.Is<Employee>(emp => emp.Name == result.Name && emp.Email == 		result.email)), Times.Once);
+
+		
+	}
+	[Fact]
+	public async Task UpdateEmployeeAsync_ShouldUpdateEmployee_WheneEmployeeExists()
+	{
+		var employeeId = Guid.NewGuid();
+		
+		var existingemployee = new Employee{Id = employeeId, Name ="OldName", Email = "abc@gmail.com"};
+	
+		var dto = new EmployeeDto("New Name","dvv@gmail.com");
+	
+		//Arrange
+		
+		_repoMock.Setup(repo => repo.GetByIdAsync(employeeId)).ReturnsAsync(existingemployee);
+
+		//Act
+		var result = await _service.UpdateEmployeeAsync(employeeId,dto);
+		
+		//Assert
+		Assert.NotNull(result);
+		Assert.Equal(dto.Name, result.Name);
+		Assert.Equal(dto.Salary, result.Salary);
+		Assert.Equal(dto.Email, result.Email);
+
+		_repoMock.Verify(repo => repo.Update(It.Is<Employee>(emp => emp.Id == employeeId &&
+				emp.Name == dto.Name && emp.Email == dto.Email)), Times.Once);
+	}
+	
+	[Fact]
+	public async Task UpdateEmployeeAsync_ShouldThrow_WhenEmployeeNotFound()
+	{
+		var empId = Guid.NewGuid();
+		
+		var dto = new EmployeeDto("aa", 5000, "dddd@gmail.com");
+			
+		//Arrange
+		_repoMock.Setup(x => x.GetByIdAsync(empId)).ReturnsAsync((Employee?)null);
+		//Act
+		var exception = await Assert.ThrowsAsync<KeyNotFoundException>(() => 						_service.UpdateemployeeAsync(empId, dto);
+		//Assert
+		Assert.Equal("Employee Not Found", exception.Message);
+		
+		_repoMock.Verify(x => x.Update(It.Is<Employee>()), Times.Never);
+		
+	}
+	
+	[Fact]
+	public async Task DeleteEmployeeAsync_ShouldReturnTrue_whenEmployeeExists()
+	{
+		var empId = Guid.NewGuid();
+	
+		var employee = new Employee{Id = empId, Name = "aaa", Salary = 30000, Email = "ss@gmail.com", 			IsDeleted = false}
+		
+		//Arrange
+		_repoMock.Setup(repo => repo.GetByIdAsync(empId)).ReturnsAsync(employee);
+
+		//Act
+		va result = await _service.DeleteEmployeeAsync(empId);
+
+		//Assert
+		Assert.True(result);
+		
+		_repoMock.Verify(repo => repo.Update(employee), Times.Once);
+		
+		
+	}
+	
+	[Fact]
+	public async Task DeleteEmployeeAsync_ShouldReturnFalse_WhenEmployeeNotExists()
+	{
+
+		var empId = Guid.NewGuid();
+		//Arrange
+		_repoMock.Setup(x =. x.GetByIdAsync(empId)).ReturnsAsync(null);
+		//Act
+		var res = await _Service.DeleteEmployeeAsync(empId);
+		//Assert
+		Assert.False(res);
+
+		repoMock.Verify(x => x.Update(It.IsAny<Employee>()), Times.Never);
+	}
+	
+	[Fact]
+	public async Task GetAllEmployeesAsync_ShouldReturnAllEmployees()
+	{
+		var emps = new List<Employee>{
+		new Employee{Id = Guid.NewGuid(), Name = "sss", Salary = 4545},
+		new Employee{Id = Guid.NewGuid(), Name = "ddd", Salary = 6545}
+		}
+
+		_repoMock.Setup(x => x.GetAllAsync()).ReturnsAsync(emps);
+	
+		var res = await _service.GetAllEmployeesAsync();
+		
+		Assert.NotNull();
+		Assert.Equal(2, res.Count());
+	}
+
+}
+
