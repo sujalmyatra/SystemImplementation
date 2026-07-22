@@ -1,6 +1,8 @@
 
 
 using System.Collections.Frozen;
+using System.ComponentModel;
+using System.Security.Cryptography.X509Certificates;
 
 public enum AssetStatus
 {
@@ -197,7 +199,7 @@ public interface IGenericRepository<T> where T : BaseEntity
 }
 public class GenericRepository<T>(AppDbContext context) : IGenericRepository<T> where T : BaseEntity
 {
-    private readonly DbSet<T> _set = context.Set<T>();
+    protected readonly DbSet<T> _set = context.Set<T>();
 
     public async Task<T?> GetByIdAsync(Guid id)
     {
@@ -244,16 +246,44 @@ public class UnitOfWork(AppDbContext context) : IUnitOfWork
         return await context.SaveChangesAsync();
     }
 }
-
+public interface IEmployeeRepository : IGenericRepository<Employee>
+{
+    Task<Employee?> GetWithActiveAssignmentsAsync(Guid empId);
+    Task<Employee?> GetWithActiveAssignmentsAndAssetsAsync(Guid empId);
+}
+public class  EmployeeRepository(AppDbContext context) : GenericRepository<Employee>(context),IEmployeeRepository 
+{
+    public async Task<Employee?> GetWithActiveAssignmentsAsync(Guid empId)
+    {
+        return await context.Employees.Include(e => e.AssetAssignments.Where(x => x.IsActive))
+            .SingleOrDefaultAsync(x => x.Id == empId);
+    }
+    public async Task<Employee?> GetWithActiveAssignmentsAndAssetsAsync(Guid empId)
+    {
+        return await context.Employees.Include(e => e.AssetAssignments.Where(x => x.IsActive)).ThenInclude(x => x.Asset)
+            .SingleOrDefaultAsync(x => x.Id == empId);
+    }
+}
 public interface IAssetRepository : IGenericRepository<Asset>
 {
     Task<Asset?> GetAvailableAssetAsync(AssetType type);
+    Task<Asset?> GetWithActiveAssignmentsAsync(Guid assetId);
+    Task<Asset?> GetWithActiveAssignmentsandEmployeesAsync(Guid assetId);
 }
-public class AssetRepository(AppDbContext context) : GenericRepository<Asset>(context), IAssetRepository
+public class AssetRepository(AppDbContext context) : GenericRepository<Asset>(context),IAssetRepository
 {
     public async Task<Asset?> GetAvailableAssetAsync(AssetType type)
     {
-        return await context.Assets.Where(x => x.Status == AssetStatus.Available && x.AssetType == type).FirstOrDefaultAsync();
+        return await _set.FirstOrDefaultAsync(x => x.AssetType == type && x.Status == AssetStatus.Available);
+    }
+    public async Task<Asset?> GetWithActiveAssignmentsAsync(Guid assetId)
+    {
+        return await _set.Include(x => x.AssetAssignments.Where(a => a.IsActive))
+        .SingleOrDefaultAsync(x => x.Id == assetId);
+    }
+    public async Task<Asset?> GetWithActiveAssignmentsandEmployeesAsync(Guid assetId)
+    {
+        return await _set.Include(x => x.AssetAssignments.Where(a => a.IsActive))
     }
 }
 public interface IAssetAssignmentRepository : IGenericRepository<AssetAssignment>
@@ -398,6 +428,52 @@ public class  EmployeeService(IUnitOfWork uow, ILogger<EmployeeService> logger) 
         logger.LogInformation($"Employee with ID : {employeeId} Deleted");
     }
 }
+
+public interface IAssetService
+{
+    Task<AssetReturnResponseDto> ReturnAssetAsync(Guid assignmentId, AssetCondition condition);
+}
+
+public class AssetService(IUnitOfWork uow): IAssetService
+{
+    public async Task<AssetReturnResponseDto> ReturnAssetAsync(Guid assignmentId, AssetCondition condition)
+    {
+        var assignment = await uow.AssetAssignments.Where(x => x.Id == assignmentId)
+                    .Include(x => x.Asset)
+                    .SingleOrDefaultAsync();
+
+        if(assignment is null)
+            throw new NotFoundException($"ssetAssignment with {assignmentId} not found");
+        
+        assignment.IsActive = false;
+
+        assignment.Asset.Condition = condition;
+
+        assignment.Asset.Status = condition switch
+        {
+           AssetCondition.Good => AssetStatus.Available,
+           AssetCondition.NeedsMaintenance => AssetStatus.UnderMaintenance,
+           AssetCondition.Damaged => AssetStatus.Damaged,
+           _ => throw new InvalidArgumentException($"{condition} does not exist in system")
+
+        } ;
+
+        var ah = new AssignmentHistory
+        {
+            AssignedAt = assignment.AssignedAt,
+            EmployeeId = assignment.EmployeeId,
+            ReturnCondition = condition,
+            AssetId = assignment.AssetId,
+            ReturnedAt = DateTime.UtcNow
+        };
+
+        await uow.AssignmentHistorys.AddAsync(ah);
+
+        await uow.SaveChangesAsync();
+        return new AssetReturnResponseDto(ah.EmployeeId, ah.AssetId, ah.ReturnedAt);
+    }
+}
+public record AssetReturnResponseDto(Guid EmployeeId, Guid AssetId, DateTime ReturnedAt);
 public class GlobalExceptionMiddleware
 {
     private readonly RequestDelegate _next;
