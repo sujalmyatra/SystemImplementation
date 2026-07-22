@@ -548,3 +548,8 @@ public class Program
             .ToListAsync();
     }
 }
+
+public interface IPaymentService
+{
+    Task<PaymentResponseDto>
+}

@@ -1,3 +1,7 @@
+using System.Data.Common;
+using System.Formats.Asn1;
+using System.Linq.Expressions;
+
 public abstract class BaseEntity
 {
     public Guid Id{get; protected set;}
@@ -111,6 +115,11 @@ public class Payment : BaseEntity
     public decimal TotalAmount{get; set;}
     public DateTime? PaidAt{get; set;}
 
+
+    public int RetryCount{get; set;}
+    public DateTime? LastAttemptAt{get; set;}
+
+    public string? FailureReason{get; set;}
 
     public Guid OrderId{get; set;}
     public Order Order{get; set;}
@@ -309,4 +318,77 @@ var result = lastmonthOrders.Join(OrderItems, lm => lm.Id, oi => oi.OrderId,(lm,
  {
      g.Key.ProductId, g.Key.ProductName,
      SellCount = g.Count()
- })
+ });
+ public record PaymentResponseDto(Guid PaymentId, Guid OrderId, PaymentStatus Status, int RetryCount,  string? Note);
+public interface IPaymentService
+{    
+    Task<PaymentResponseDto> ProcessAsync(Guid paymentId);
+}
+public class PaymentService(IUnitOfWork uow, IPaymentGateway gateway) : IPaymentService
+{
+    private const int MaximumAttempts = 6;
+
+    public async Task<PaymentResponseDto> ProcessAsync(Guid paymentId)
+    {
+        var payment = await uow.Payments.GetByIdAsync(paymentId);
+
+        if(payment is null)
+            throw new KeyNotFoundException($"Payment wiht Id{paymentId} Not found");
+
+        if(payment.Status == PaymentStatus.Paid)
+        {
+            return new PaymentResponseDto(paymentId, payment.OrderId, payment.Status, payment.RetryCount, "Payment has already done");
+        }
+
+        if(payment.Status == PaymentStatus.Refunded)
+        {
+            throw new InvalidOperationException("A refunded payment canot be processed");
+        }
+
+        if(payment.RetryCount > MaximumAttempts)
+            throw new PAymentReteyLimitExecededException("max attempts reached");
+
+        var order = await uow.Orders.GetByIdAsync(payment.OrderId);
+
+        if(order is null)
+            throw new KeyNotFoundException($"Order wiht Id{paymentId} Not found");
+        
+        while(payment.RetryCount < MaximumAttempts)
+        {
+            payment.RetryCount++;
+            payment.LastAttemptAt = DateTime.UtcNow;
+
+            payment.Status = PaymentStatus.Pending;
+
+            payment.FailureReason = null;
+
+            try
+            {
+                var isSuccess = await gateway.ProcessAsync(paymentId, payment.TotalAmount);
+
+                if(isSuccess)
+                {
+                    payment.Status = PaymentStatus.Paid;
+                    payment.PaidAt = DateTime.UtcNow;
+
+                    order.Status = OrderStatus.confirmed;
+
+                    await uow.SaveChnagesAsync();
+
+                    return new PaymentResponseDto(payment.Id,payment.OrderId, payment.Status, payment.RetryCount, "successfull paymenyt");
+                }
+                payment.Status = PaymentStatus.Faild;
+                payment.FailureReason = "PAymenyGateway rejected payment";
+            }
+            catch(Exception ex)
+            {
+                payment.Status = PaymentStatus.Faild;
+                payment.FailureReason = ex.Message;
+            }
+            
+        }
+        throw new PaymentRetryLimitReachedException($"PAyment failed after maximum attempts :: {MaximumAttempts}");
+        
+
+    }
+}
